@@ -109,6 +109,13 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { deliveryDao.clearAll() }
     }
 
+    fun resetHistory() {
+        viewModelScope.launch {
+            historyDao.clearAll()
+            _toast.emit("Histórico apagado")
+        }
+    }
+
     // ---------------- Consulta de CEP ----------------
 
     suspend fun lookupCep(cep: String): CepResponse = GeocodingService.lookupCep(cep)
@@ -142,6 +149,7 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
 
             val match = candidatos.first()
             val posicao = pendentes.indexOfFirst { it.id == match.id } + 1
+            deliveryDao.markVerified(match.id)
             _scanLabelResult.value = ScanLabelResult.Found(
                 position = posicao, total = pendentes.size, address = match.address,
                 ambiguous = ambiguous, numero = numero

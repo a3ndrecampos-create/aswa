@@ -19,5 +19,6 @@ data class Delivery(
     val order: Int = 999,
     val deliveredAt: Long? = null,   // epoch millis
     val approxLocation: Boolean = false,
-    val trackingCode: String = ""    // código do pacote (Mercado Livre/Shopee), pra bater com o scanner
+    val trackingCode: String = "",   // código do pacote (Mercado Livre/Shopee), pra bater com o scanner
+    val verified: Boolean = false    // marcado quando o pacote foi conferido pelo scanner de etiqueta
 )

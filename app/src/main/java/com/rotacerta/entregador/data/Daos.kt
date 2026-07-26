@@ -28,6 +28,9 @@ interface DeliveryDao {
 
     @Query("SELECT * FROM deliveries WHERE trackingCode != '' AND trackingCode = :code LIMIT 1")
     suspend fun findByTrackingCode(code: String): Delivery?
+
+    @Query("UPDATE deliveries SET verified = 1 WHERE id = :id")
+    suspend fun markVerified(id: Long)
 }
 
 @Dao
@@ -37,4 +40,7 @@ interface HistoryDao {
 
     @Insert
     suspend fun insert(entry: HistoryEntry)
+
+    @Query("DELETE FROM history")
+    suspend fun clearAll()
 }

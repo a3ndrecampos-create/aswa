@@ -103,11 +103,36 @@ fun ConfigScreen(viewModel: RotaViewModel) {
 
         Divider(Modifier.padding(vertical = 8.dp))
 
+        var confirmResetHistory by remember { mutableStateOf(false) }
+
         OutlinedButton(
             onClick = { viewModel.clearAllDeliveries() },
             colors = ButtonDefaults.outlinedButtonColors(contentColor = com.rotacerta.entregador.ui.theme.Danger),
             modifier = Modifier.fillMaxWidth()
         ) { Text("Remover todas as entregas da rota") }
+
+        OutlinedButton(
+            onClick = { confirmResetHistory = true },
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = com.rotacerta.entregador.ui.theme.Danger),
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Resetar histórico de entregas") }
+
+        if (confirmResetHistory) {
+            AlertDialog(
+                onDismissRequest = { confirmResetHistory = false },
+                title = { Text("Resetar histórico?") },
+                text = { Text("Isso apaga todo o histórico de entregas já concluídas. Essa ação não pode ser desfeita.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        viewModel.resetHistory()
+                        confirmResetHistory = false
+                    }) { Text("Apagar", color = com.rotacerta.entregador.ui.theme.Danger) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { confirmResetHistory = false }) { Text("Cancelar") }
+                }
+            )
+        }
     }
 }
 

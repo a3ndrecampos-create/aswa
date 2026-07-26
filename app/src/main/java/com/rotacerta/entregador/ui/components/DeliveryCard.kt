@@ -40,18 +40,36 @@ fun DeliveryCard(
             .padding(12.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Box(
-            Modifier
-                .size(26.dp)
-                .clip(CircleShape)
-                .background(if (delivered) Success else Surface3),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                if (delivered) "✓" else delivery.order.toString(),
-                color = if (delivered) Color(0xFF08210F) else TextMain,
-                fontSize = 12.sp, fontWeight = FontWeight.Bold
-            )
+        Box {
+            Box(
+                Modifier
+                    .size(26.dp)
+                    .clip(CircleShape)
+                    .background(if (delivered) Success else Surface3),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    if (delivered) "✓" else delivery.order.toString(),
+                    color = if (delivered) Color(0xFF08210F) else TextMain,
+                    fontSize = 12.sp, fontWeight = FontWeight.Bold
+                )
+            }
+            if (delivery.verified && !delivered) {
+                Box(
+                    Modifier
+                        .size(14.dp)
+                        .align(Alignment.TopEnd)
+                        .offset(x = 4.dp, y = (-4).dp)
+                        .clip(CircleShape)
+                        .background(Success),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.Check, contentDescription = "Conferido pelo scanner",
+                        tint = Color.White, modifier = Modifier.size(10.dp)
+                    )
+                }
+            }
         }
         Column(Modifier.weight(1f)) {
             Text(

@@ -21,7 +21,7 @@ class Converters {
     fun toStatus(value: String): DeliveryStatus = DeliveryStatus.valueOf(value)
 }
 
-@Database(entities = [Delivery::class, HistoryEntry::class], version = 2, exportSchema = false)
+@Database(entities = [Delivery::class, HistoryEntry::class], version = 3, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun deliveryDao(): DeliveryDao
