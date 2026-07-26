@@ -76,6 +76,8 @@ dependencies {
 
     // Leitura de QR code / código de barras (etiqueta da encomenda)
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
+    // OCR — opção extra para quando a etiqueta não tem código legível
+    implementation("com.google.mlkit:text-recognition:16.0.1")
     implementation("androidx.camera:camera-camera2:1.3.4")
     implementation("androidx.camera:camera-lifecycle:1.3.4")
     implementation("androidx.camera:camera-view:1.3.4")

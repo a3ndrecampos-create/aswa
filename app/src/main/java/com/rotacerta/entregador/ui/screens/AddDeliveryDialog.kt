@@ -8,6 +8,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.*
@@ -17,6 +18,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.rotacerta.entregador.data.Priority
 import com.rotacerta.entregador.network.CepResponse
+import com.rotacerta.entregador.ocr.OcrHelper
 import com.rotacerta.entregador.viewmodel.RotaViewModel
 import kotlinx.coroutines.launch
 
@@ -44,6 +46,20 @@ fun AddDeliveryDialog(viewModel: RotaViewModel, onDismiss: () -> Unit) {
 
     var showScanner by remember { mutableStateOf(false) }
 
+    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
+        if (bitmap != null) {
+            scope.launch {
+                try {
+                    val text = OcrHelper.recognize(bitmap)
+                    if (text.isNotBlank()) {
+                        address = text
+                        OcrHelper.extractCep(text)?.let { cep = it }
+                    }
+                } catch (_: Exception) { }
+            }
+        }
+    }
+
     val xlsxLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         uri?.let { viewModel.importXlsx(it); onDismiss() }
     }
@@ -68,12 +84,17 @@ fun AddDeliveryDialog(viewModel: RotaViewModel, onDismiss: () -> Unit) {
                         Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp)); Text("Ler código", style = MaterialTheme.typography.labelMedium)
                     }
-                    OutlinedButton(onClick = {
-                        xlsxLauncher.launch("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                    }, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp)); Text("Importar .xlsx", style = MaterialTheme.typography.labelMedium)
+                    OutlinedButton(onClick = { cameraLauncher.launch(null) }, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp)); Text("Ler foto", style = MaterialTheme.typography.labelMedium)
                     }
+                }
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(onClick = {
+                    xlsxLauncher.launch("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                }, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp)); Text("Importar .xlsx", style = MaterialTheme.typography.labelMedium)
                 }
                 Spacer(Modifier.height(12.dp))
 
