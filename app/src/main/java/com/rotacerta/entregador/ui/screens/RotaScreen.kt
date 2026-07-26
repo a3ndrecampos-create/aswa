@@ -5,7 +5,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
@@ -65,35 +64,6 @@ fun RotaScreen(viewModel: RotaViewModel, onAddClick: () -> Unit) {
             Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(4.dp))
             Text("Escanear etiqueta")
-        }
-        OutlinedButton(
-            onClick = {
-                val last = pending.lastOrNull() ?: return@OutlinedButton
-                val originLat = config.originLat
-                val originLng = config.originLng
-                val destination: String
-                val waypointStops: List<com.rotacerta.entregador.data.Delivery>
-                if (config.roundTrip && originLat != null && originLng != null) {
-                    destination = "$originLat,$originLng"
-                    waypointStops = pending
-                } else {
-                    destination = "${last.lat},${last.lng}"
-                    waypointStops = pending.dropLast(1)
-                }
-                val waypoints = waypointStops.joinToString("|") { "${it.lat},${it.lng}" }
-                var url = "https://www.google.com/maps/dir/?api=1&destination=$destination&travelmode=driving"
-                if (!(config.roundTrip && originLat != null)) {
-                    originLat?.let { lat -> originLng?.let { lng -> url += "&origin=$lat,$lng" } }
-                }
-                if (waypoints.isNotBlank()) url += "&waypoints=" + java.net.URLEncoder.encode(waypoints, "UTF-8")
-                context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, url.toUri()))
-            },
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            enabled = pending.isNotEmpty()
-        ) {
-            Icon(Icons.Default.Map, contentDescription = null, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(4.dp))
-            Text(if (config.roundTrip) "Abrir rota completa (ida e volta)" else "Abrir rota completa")
         }
 
         if (deliveries.isEmpty()) {

@@ -38,7 +38,7 @@ fun AddDeliveryDialog(viewModel: RotaViewModel, onDismiss: () -> Unit) {
 
     fun composeFromCep(data: CepResponse) {
         val street = data.logradouro.orEmpty() + if (numero.isNotBlank()) ", $numero" else ""
-        address = listOfNotNull(street, data.bairro, data.localidade?.let { "$it - ${data.uf}" })
+        address = listOfNotNull(street, data.bairro, data.localidade?.let { "$it - ${data.uf}" }, cep)
             .filter { it.isNotBlank() }.joinToString(", ")
     }
 
