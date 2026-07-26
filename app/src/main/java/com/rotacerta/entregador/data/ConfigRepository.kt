@@ -21,7 +21,9 @@ data class AppConfig(
     val navApp: NavApp = NavApp.GOOGLE,
     val defaultValue: Double = 6.0,
     val notifications: Boolean = true,
-    val sortDirection: RouteSortDirection = RouteSortDirection.NEAREST_FIRST
+    val sortDirection: RouteSortDirection = RouteSortDirection.NEAREST_FIRST,
+    val roundTrip: Boolean = false,
+    val lightTheme: Boolean = false
 )
 
 private val Context.dataStore by preferencesDataStore(name = "rotacerta_config")
@@ -36,6 +38,8 @@ class ConfigRepository(private val context: Context) {
         val DEFAULT_VALUE = doublePreferencesKey("default_value")
         val NOTIFICATIONS = booleanPreferencesKey("notifications")
         val SORT_DIRECTION = stringPreferencesKey("sort_direction")
+        val ROUND_TRIP = booleanPreferencesKey("round_trip")
+        val LIGHT_THEME = booleanPreferencesKey("light_theme")
     }
 
     val configFlow: Flow<AppConfig> = context.dataStore.data.map { prefs ->
@@ -47,7 +51,9 @@ class ConfigRepository(private val context: Context) {
             navApp = prefs[Keys.NAV_APP]?.let { runCatching { NavApp.valueOf(it) }.getOrNull() } ?: NavApp.GOOGLE,
             defaultValue = prefs[Keys.DEFAULT_VALUE] ?: 6.0,
             notifications = prefs[Keys.NOTIFICATIONS] ?: true,
-            sortDirection = prefs[Keys.SORT_DIRECTION]?.let { runCatching { RouteSortDirection.valueOf(it) }.getOrNull() } ?: RouteSortDirection.NEAREST_FIRST
+            sortDirection = prefs[Keys.SORT_DIRECTION]?.let { runCatching { RouteSortDirection.valueOf(it) }.getOrNull() } ?: RouteSortDirection.NEAREST_FIRST,
+            roundTrip = prefs[Keys.ROUND_TRIP] ?: false,
+            lightTheme = prefs[Keys.LIGHT_THEME] ?: false
         )
     }
 
@@ -61,6 +67,8 @@ class ConfigRepository(private val context: Context) {
             prefs[Keys.DEFAULT_VALUE] = config.defaultValue
             prefs[Keys.NOTIFICATIONS] = config.notifications
             prefs[Keys.SORT_DIRECTION] = config.sortDirection.name
+            prefs[Keys.ROUND_TRIP] = config.roundTrip
+            prefs[Keys.LIGHT_THEME] = config.lightTheme
         }
     }
 }

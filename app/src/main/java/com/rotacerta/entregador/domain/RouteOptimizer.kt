@@ -56,13 +56,17 @@ object RouteOptimizer {
 
     data class RouteStats(val pendingCount: Int, val distanceKm: Double, val etaMillis: Long?)
 
-    fun computeStats(pending: List<Delivery>, origin: LatLng?, avgSpeedKmh: Double): RouteStats {
+    fun computeStats(pending: List<Delivery>, origin: LatLng?, avgSpeedKmh: Double, roundTrip: Boolean = false): RouteStats {
         val sorted = pending.sortedBy { it.order }
         var dist = 0.0
         var current = origin ?: sorted.firstOrNull()?.let { LatLng(it.lat, it.lng) }
         sorted.forEach { d ->
             current?.let { dist += haversineKm(it.lat, it.lng, d.lat, d.lng) }
             current = LatLng(d.lat, d.lng)
+        }
+        if (roundTrip && origin != null && sorted.isNotEmpty()) {
+            val last = sorted.last()
+            dist += haversineKm(last.lat, last.lng, origin.lat, origin.lng)
         }
         val travelMin = (dist / avgSpeedKmh) * 60
         val stopMin = sorted.size * 4.0 // tempo médio por parada

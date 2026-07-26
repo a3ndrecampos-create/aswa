@@ -18,5 +18,6 @@ data class Delivery(
     val status: DeliveryStatus = DeliveryStatus.PENDENTE,
     val order: Int = 999,
     val deliveredAt: Long? = null,   // epoch millis
-    val approxLocation: Boolean = false
+    val approxLocation: Boolean = false,
+    val trackingCode: String = ""    // código do pacote (Mercado Livre/Shopee), pra bater com o scanner
 )

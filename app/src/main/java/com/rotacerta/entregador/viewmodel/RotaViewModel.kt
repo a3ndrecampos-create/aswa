@@ -102,6 +102,32 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
 
     suspend fun lookupCep(cep: String): CepResponse = GeocodingService.lookupCep(cep)
 
+    // ---------------- Scanner de pacotes ----------------
+
+    fun scanPackage(code: String) {
+        viewModelScope.launch {
+            val clean = code.trim()
+            if (clean.isBlank()) return@launch
+            val exact = deliveryDao.findByTrackingCode(clean)
+            val match = exact ?: deliveries.value.firstOrNull {
+                it.trackingCode.isNotBlank() && (it.trackingCode == clean || clean.contains(it.trackingCode) || it.trackingCode.contains(clean))
+            }
+            if (match == null) {
+                _toast.emit("Pacote não encontrado nesta rota (código: $clean)")
+                return@launch
+            }
+            if (match.status == DeliveryStatus.ENTREGUE) {
+                _toast.emit("Esse pacote já foi entregue — ${match.address}")
+            } else {
+                val posicao = deliveries.value
+                    .filter { it.status == DeliveryStatus.PENDENTE }
+                    .sortedBy { it.order }
+                    .indexOfFirst { it.id == match.id } + 1
+                _toast.emit("📦 Pacote é a ${posicao}ª parada da rota — ${match.address}")
+            }
+        }
+    }
+
     // ---------------- Otimização de rota ----------------
 
     fun optimizeRoute() {
@@ -123,7 +149,7 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
         val cfg = config.value
         val origin = cfg.originLat?.let { lat -> cfg.originLng?.let { lng -> LatLng(lat, lng) } }
         val pending = deliveries.value.filter { it.status == DeliveryStatus.PENDENTE }
-        return RouteOptimizer.computeStats(pending, origin, cfg.vehicle.avgSpeedKmh)
+        return RouteOptimizer.computeStats(pending, origin, cfg.vehicle.avgSpeedKmh, cfg.roundTrip)
     }
 
     // ---------------- Config ----------------
@@ -200,7 +226,8 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
                                 address = row.address, lat = geo.lat, lng = geo.lng,
                                 priority = row.priority, deadline = row.deadline,
                                 value = row.value ?: config.value.defaultValue,
-                                order = row.sequence ?: 999, approxLocation = geo.approx
+                                order = row.sequence ?: 999, approxLocation = geo.approx,
+                                trackingCode = row.trackingCode
                             )
                         )
                         added++

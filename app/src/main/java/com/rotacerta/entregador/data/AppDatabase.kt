@@ -21,7 +21,7 @@ class Converters {
     fun toStatus(value: String): DeliveryStatus = DeliveryStatus.valueOf(value)
 }
 
-@Database(entities = [Delivery::class, HistoryEntry::class], version = 1, exportSchema = false)
+@Database(entities = [Delivery::class, HistoryEntry::class], version = 2, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun deliveryDao(): DeliveryDao
@@ -36,7 +36,7 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "rotacerta.db"
-                ).build().also { INSTANCE = it }
+                ).fallbackToDestructiveMigration().build().also { INSTANCE = it }
             }
         }
     }

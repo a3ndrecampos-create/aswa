@@ -17,7 +17,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.rotacerta.entregador.data.Priority
 import com.rotacerta.entregador.network.CepResponse
-import com.rotacerta.entregador.ocr.OcrHelper
 import com.rotacerta.entregador.viewmodel.RotaViewModel
 import kotlinx.coroutines.launch
 
@@ -61,22 +60,17 @@ fun AddDeliveryDialog(viewModel: RotaViewModel, onDismiss: () -> Unit) {
         } else cepHint = ""
     }
 
-    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
-        if (bitmap != null) {
-            scope.launch {
-                try {
-                    val text = OcrHelper.recognize(bitmap)
-                    val cepEncontrado = OcrHelper.extractCep(text)
-                    if (cepEncontrado != null) {
-                        buscarPorCep(cepEncontrado.filter { it.isDigit() })
-                    } else {
-                        cepHint = "Não achei um CEP na foto. Digite manualmente."
-                    }
-                } catch (_: Exception) {
-                    cepHint = "Não consegui ler a foto. Tente de novo com mais luz."
-                }
-            }
-        }
+    var showCepScanner by remember { mutableStateOf(false) }
+
+    if (showCepScanner) {
+        CepScannerDialog(
+            onResult = { cepEncontrado, numeroEncontrado ->
+                showCepScanner = false
+                numeroEncontrado?.let { numero = it }
+                buscarPorCep(cepEncontrado.filter { it.isDigit() })
+            },
+            onDismiss = { showCepScanner = false }
+        )
     }
 
     val xlsxLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
@@ -89,7 +83,7 @@ fun AddDeliveryDialog(viewModel: RotaViewModel, onDismiss: () -> Unit) {
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { cameraLauncher.launch(null) }, modifier = Modifier.weight(1f)) {
+                    OutlinedButton(onClick = { showCepScanner = true }, modifier = Modifier.weight(1f)) {
                         Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp)); Text("Foto do CEP", style = MaterialTheme.typography.labelMedium)
                     }

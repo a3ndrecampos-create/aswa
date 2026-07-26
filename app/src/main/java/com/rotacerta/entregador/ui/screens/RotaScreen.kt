@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -26,6 +27,14 @@ fun RotaScreen(viewModel: RotaViewModel, onAddClick: () -> Unit) {
     val deliveries by viewModel.deliveries.collectAsState()
     val config by viewModel.config.collectAsState()
     val context = LocalContext.current
+    var showPackageScanner by remember { mutableStateOf(false) }
+
+    if (showPackageScanner) {
+        PackageScannerDialog(
+            onResult = { code -> showPackageScanner = false; viewModel.scanPackage(code) },
+            onDismiss = { showPackageScanner = false }
+        )
+    }
 
     val pending = remember(deliveries) { deliveries.filter { it.status == DeliveryStatus.PENDENTE }.sortedBy { it.order } }
     val done = remember(deliveries) { deliveries.filter { it.status == DeliveryStatus.ENTREGUE } }
@@ -50,11 +59,32 @@ fun RotaScreen(viewModel: RotaViewModel, onAddClick: () -> Unit) {
             }
         }
         OutlinedButton(
+            onClick = { showPackageScanner = true },
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+        ) {
+            Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(4.dp))
+            Text("Escanear pacote")
+        }
+        OutlinedButton(
             onClick = {
                 val last = pending.lastOrNull() ?: return@OutlinedButton
-                val waypoints = pending.dropLast(1).joinToString("|") { "${it.lat},${it.lng}" }
-                var url = "https://www.google.com/maps/dir/?api=1&destination=${last.lat},${last.lng}&travelmode=driving"
-                config.originLat?.let { lat -> config.originLng?.let { lng -> url += "&origin=$lat,$lng" } }
+                val originLat = config.originLat
+                val originLng = config.originLng
+                val destination: String
+                val waypointStops: List<com.rotacerta.entregador.data.Delivery>
+                if (config.roundTrip && originLat != null && originLng != null) {
+                    destination = "$originLat,$originLng"
+                    waypointStops = pending
+                } else {
+                    destination = "${last.lat},${last.lng}"
+                    waypointStops = pending.dropLast(1)
+                }
+                val waypoints = waypointStops.joinToString("|") { "${it.lat},${it.lng}" }
+                var url = "https://www.google.com/maps/dir/?api=1&destination=$destination&travelmode=driving"
+                if (!(config.roundTrip && originLat != null)) {
+                    originLat?.let { lat -> originLng?.let { lng -> url += "&origin=$lat,$lng" } }
+                }
                 if (waypoints.isNotBlank()) url += "&waypoints=" + java.net.URLEncoder.encode(waypoints, "UTF-8")
                 context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, url.toUri()))
             },
@@ -63,7 +93,7 @@ fun RotaScreen(viewModel: RotaViewModel, onAddClick: () -> Unit) {
         ) {
             Icon(Icons.Default.Map, contentDescription = null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(4.dp))
-            Text("Abrir rota completa")
+            Text(if (config.roundTrip) "Abrir rota completa (ida e volta)" else "Abrir rota completa")
         }
 
         if (deliveries.isEmpty()) {

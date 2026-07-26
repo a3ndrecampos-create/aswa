@@ -11,14 +11,16 @@ data class ImportedRow(
     val value: Double?,
     val lat: Double?,
     val lng: Double?,
-    val sequence: Int?
+    val sequence: Int?,
+    val trackingCode: String
 )
 
 /**
  * Lê uma planilha .xlsx exportada de qualquer sistema de rotas e tenta identificar
  * as colunas relevantes por nome (aceita variações em pt/en): endereço, bairro,
- * cidade, CEP, prioridade, prazo, valor, latitude/longitude e sequência (se já
- * vierem prontas na planilha). Usa o SimpleXlsxReader (sem dependências externas).
+ * cidade, CEP, prioridade, prazo, valor, latitude/longitude, sequência e código de
+ * rastreio (usado depois pelo scanner de pacotes). Usa o SimpleXlsxReader (sem
+ * dependências externas).
  */
 object XlsxImporter {
 
@@ -32,6 +34,7 @@ object XlsxImporter {
     private val LAT_KEYS = listOf("latitude", "lat")
     private val LNG_KEYS = listOf("longitude", "lng", "long", "lon")
     private val SEQ_KEYS = listOf("sequence", "sequencia", "sequência", "stop", "ordem", "order")
+    private val TRACKING_KEYS = listOf("spx tn", "tracking", "rastreio", "codigo", "código", "at id", "shipment_id", "shipment id", "tn")
 
     fun import(context: Context, uri: Uri, defaultValue: Double): List<ImportedRow> {
         val rows = SimpleXlsxReader.readFirstSheet(context, uri)
@@ -55,6 +58,7 @@ object XlsxImporter {
         val latIdx = colIndex(LAT_KEYS)
         val lngIdx = colIndex(LNG_KEYS)
         val seqIdx = colIndex(SEQ_KEYS)
+        val trackingIdx = colIndex(TRACKING_KEYS)
 
         fun cellText(row: List<String>, idx: Int): String =
             if (idx == -1 || idx >= row.size) "" else row[idx].trim()
@@ -89,7 +93,8 @@ object XlsxImporter {
                     value = value,
                     lat = lat,
                     lng = lng,
-                    sequence = seq
+                    sequence = seq,
+                    trackingCode = cellText(row, trackingIdx)
                 )
             )
         }

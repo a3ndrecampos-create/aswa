@@ -56,6 +56,12 @@ fun ConfigScreen(viewModel: RotaViewModel) {
             selected = config.sortDirection
         ) { viewModel.updateConfig { c -> c.copy(sortDirection = it) } }
 
+        Text("Tipo de percurso", style = MaterialTheme.typography.labelLarge)
+        SingleChoiceRow(
+            options = listOf("Só ida" to false, "Ida e volta" to true),
+            selected = config.roundTrip
+        ) { viewModel.updateConfig { c -> c.copy(roundTrip = it) } }
+
         Text("Veículo", style = MaterialTheme.typography.labelLarge)
         SingleChoiceRow(
             options = Vehicle.entries.map { it.name.lowercase().replaceFirstChar { c -> c.uppercase() } to it },
@@ -84,6 +90,14 @@ fun ConfigScreen(viewModel: RotaViewModel) {
             Switch(
                 checked = config.notifications,
                 onCheckedChange = { viewModel.updateConfig { c -> c.copy(notifications = it) } }
+            )
+        }
+
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Tema claro", style = MaterialTheme.typography.labelLarge)
+            Switch(
+                checked = config.lightTheme,
+                onCheckedChange = { viewModel.updateConfig { c -> c.copy(lightTheme = it) } }
             )
         }
 

@@ -31,4 +31,16 @@ object OcrHelper {
         val digits = match.value.filter { it.isDigit() }
         return if (digits.length == 8) "${digits.substring(0, 5)}-${digits.substring(5)}" else null
     }
+
+    // Tenta achar o número da casa/apto perto de palavras como "nº", "n.", "num" —
+    // e, se não achar, cai pra "depois de vírgula" (padrão comum: "Rua Tal, 123").
+    // É um "melhor esforço": sempre vale conferir e corrigir manualmente.
+    private val NUMERO_KEYWORD_REGEX = Regex("""n[ºo°.:]?\s*(\d{1,6})""", RegexOption.IGNORE_CASE)
+    private val NUMERO_AFTER_COMMA_REGEX = Regex(""",\s*(\d{1,6})\b""")
+
+    fun extractNumero(text: String): String? {
+        NUMERO_KEYWORD_REGEX.find(text)?.let { return it.groupValues[1] }
+        NUMERO_AFTER_COMMA_REGEX.find(text)?.let { return it.groupValues[1] }
+        return null
+    }
 }

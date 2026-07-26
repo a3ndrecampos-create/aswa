@@ -25,6 +25,9 @@ interface DeliveryDao {
 
     @Query("SELECT COUNT(*) FROM deliveries")
     suspend fun count(): Int
+
+    @Query("SELECT * FROM deliveries WHERE trackingCode != '' AND trackingCode = :code LIMIT 1")
+    suspend fun findByTrackingCode(code: String): Delivery?
 }
 
 @Dao

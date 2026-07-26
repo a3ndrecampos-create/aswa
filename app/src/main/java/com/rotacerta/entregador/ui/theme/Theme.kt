@@ -2,24 +2,43 @@ package com.rotacerta.entregador.ui.theme
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-
-private val RotaCertaColorScheme = darkColorScheme(
-    background = Bg,
-    surface = Surface,
-    primary = Accent,
-    onPrimary = AccentInk,
-    onBackground = TextMain,
-    onSurface = TextMain,
-    secondary = RouteColor,
-    error = Danger
-)
+import androidx.compose.runtime.CompositionLocalProvider
 
 @Composable
-fun RotaCertaTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = RotaCertaColorScheme,
-        typography = MaterialTheme.typography,
-        content = content
-    )
+fun RotaCertaTheme(lightTheme: Boolean = false, content: @Composable () -> Unit) {
+    val palette = if (lightTheme) LightPalette else DarkPalette
+
+    val colorScheme = if (lightTheme) {
+        lightColorScheme(
+            background = palette.bg,
+            surface = palette.surface,
+            primary = Accent,
+            onPrimary = AccentInk,
+            onBackground = palette.textMain,
+            onSurface = palette.textMain,
+            secondary = RouteColor,
+            error = Danger
+        )
+    } else {
+        darkColorScheme(
+            background = palette.bg,
+            surface = palette.surface,
+            primary = Accent,
+            onPrimary = AccentInk,
+            onBackground = palette.textMain,
+            onSurface = palette.textMain,
+            secondary = RouteColor,
+            error = Danger
+        )
+    }
+
+    CompositionLocalProvider(LocalRotaPalette provides palette) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = MaterialTheme.typography,
+            content = content
+        )
+    }
 }

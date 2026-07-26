@@ -39,7 +39,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            RotaCertaTheme {
+            val config by viewModel.config.collectAsState()
+            RotaCertaTheme(lightTheme = config.lightTheme) {
                 val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {}
                 LaunchedEffect(Unit) {
                     permissionLauncher.launch(
