@@ -22,6 +22,12 @@ sealed class ImportProgress {
     data class Done(val added: Int, val failed: Int) : ImportProgress()
 }
 
+sealed class ScanLabelResult {
+    data class Found(val position: Int, val total: Int, val address: String, val ambiguous: Boolean, val numero: String?) : ScanLabelResult()
+    data class NotFound(val cep: String) : ScanLabelResult()
+    data class InvalidCep(val raw: String) : ScanLabelResult()
+}
+
 class RotaViewModel(app: Application) : AndroidViewModel(app) {
     private val rotaCertaApp = app as RotaCertaApp
     private val db = rotaCertaApp.database
@@ -40,6 +46,11 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _importProgress = MutableStateFlow<ImportProgress>(ImportProgress.Idle)
     val importProgress: StateFlow<ImportProgress> = _importProgress
+
+    private val _scanLabelResult = MutableStateFlow<ScanLabelResult?>(null)
+    val scanLabelResult: StateFlow<ScanLabelResult?> = _scanLabelResult
+
+    fun clearScanLabelResult() { _scanLabelResult.value = null }
 
     private val _toast = MutableSharedFlow<String>()
     val toast: SharedFlow<String> = _toast
@@ -108,7 +119,7 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val cepDigits = cep.filter { it.isDigit() }
             if (cepDigits.length != 8) {
-                _toast.emit("Não consegui ler o CEP direito. Tente de novo.")
+                _scanLabelResult.value = ScanLabelResult.InvalidCep(cep)
                 return@launch
             }
             val cepFormatted = "${cepDigits.substring(0, 5)}-${cepDigits.substring(5)}"
@@ -117,19 +128,24 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
             var candidatos = pendentes.filter { it.address.contains(cepFormatted) || it.address.contains(cepDigits) }
 
             if (candidatos.isEmpty()) {
-                _toast.emit("Nenhum endereço com o CEP $cepFormatted nesta rota")
+                _scanLabelResult.value = ScanLabelResult.NotFound(cepFormatted)
                 return@launch
             }
 
+            var ambiguous = false
             if (candidatos.size > 1 && !numero.isNullOrBlank()) {
                 val comNumero = candidatos.filter { it.address.contains(", $numero,") || it.address.contains(", $numero ") || it.address.endsWith(", $numero") || it.address.contains(" $numero,") }
-                if (comNumero.isNotEmpty()) candidatos = comNumero
+                if (comNumero.isNotEmpty()) candidatos = comNumero else ambiguous = true
+            } else if (candidatos.size > 1) {
+                ambiguous = true
             }
 
             val match = candidatos.first()
             val posicao = pendentes.indexOfFirst { it.id == match.id } + 1
-            val numeroInfo = if (candidatos.size > 1) " (vários endereços com esse CEP — confira o número: $numero)" else ""
-            _toast.emit("📦 É a ${posicao}ª parada da rota — ${match.address}$numeroInfo")
+            _scanLabelResult.value = ScanLabelResult.Found(
+                position = posicao, total = pendentes.size, address = match.address,
+                ambiguous = ambiguous, numero = numero
+            )
         }
     }
 
