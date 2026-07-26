@@ -102,29 +102,34 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
 
     suspend fun lookupCep(cep: String): CepResponse = GeocodingService.lookupCep(cep)
 
-    // ---------------- Scanner de pacotes ----------------
+    // ---------------- Scanner de pacotes (lê a etiqueta: CEP + número) ----------------
 
-    fun scanPackage(code: String) {
+    fun scanPackageByLabel(cep: String, numero: String?) {
         viewModelScope.launch {
-            val clean = code.trim()
-            if (clean.isBlank()) return@launch
-            val exact = deliveryDao.findByTrackingCode(clean)
-            val match = exact ?: deliveries.value.firstOrNull {
-                it.trackingCode.isNotBlank() && (it.trackingCode == clean || clean.contains(it.trackingCode) || it.trackingCode.contains(clean))
-            }
-            if (match == null) {
-                _toast.emit("Pacote não encontrado nesta rota (código: $clean)")
+            val cepDigits = cep.filter { it.isDigit() }
+            if (cepDigits.length != 8) {
+                _toast.emit("Não consegui ler o CEP direito. Tente de novo.")
                 return@launch
             }
-            if (match.status == DeliveryStatus.ENTREGUE) {
-                _toast.emit("Esse pacote já foi entregue — ${match.address}")
-            } else {
-                val posicao = deliveries.value
-                    .filter { it.status == DeliveryStatus.PENDENTE }
-                    .sortedBy { it.order }
-                    .indexOfFirst { it.id == match.id } + 1
-                _toast.emit("📦 Pacote é a ${posicao}ª parada da rota — ${match.address}")
+            val cepFormatted = "${cepDigits.substring(0, 5)}-${cepDigits.substring(5)}"
+
+            val pendentes = deliveries.value.filter { it.status == DeliveryStatus.PENDENTE }.sortedBy { it.order }
+            var candidatos = pendentes.filter { it.address.contains(cepFormatted) || it.address.contains(cepDigits) }
+
+            if (candidatos.isEmpty()) {
+                _toast.emit("Nenhum endereço com o CEP $cepFormatted nesta rota")
+                return@launch
             }
+
+            if (candidatos.size > 1 && !numero.isNullOrBlank()) {
+                val comNumero = candidatos.filter { it.address.contains(", $numero,") || it.address.contains(", $numero ") || it.address.endsWith(", $numero") || it.address.contains(" $numero,") }
+                if (comNumero.isNotEmpty()) candidatos = comNumero
+            }
+
+            val match = candidatos.first()
+            val posicao = pendentes.indexOfFirst { it.id == match.id } + 1
+            val numeroInfo = if (candidatos.size > 1) " (vários endereços com esse CEP — confira o número: $numero)" else ""
+            _toast.emit("📦 É a ${posicao}ª parada da rota — ${match.address}$numeroInfo")
         }
     }
 

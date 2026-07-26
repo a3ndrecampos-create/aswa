@@ -14,8 +14,8 @@ fun RotaCertaTheme(lightTheme: Boolean = false, content: @Composable () -> Unit)
         lightColorScheme(
             background = palette.bg,
             surface = palette.surface,
-            primary = Accent,
-            onPrimary = AccentInk,
+            primary = palette.accent,
+            onPrimary = palette.accentInk,
             onBackground = palette.textMain,
             onSurface = palette.textMain,
             secondary = RouteColor,
@@ -25,8 +25,8 @@ fun RotaCertaTheme(lightTheme: Boolean = false, content: @Composable () -> Unit)
         darkColorScheme(
             background = palette.bg,
             surface = palette.surface,
-            primary = Accent,
-            onPrimary = AccentInk,
+            primary = palette.accent,
+            onPrimary = palette.accentInk,
             onBackground = palette.textMain,
             onSurface = palette.textMain,
             secondary = RouteColor,

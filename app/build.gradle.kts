@@ -71,10 +71,9 @@ dependencies {
     implementation("com.squareup.retrofit2:converter-gson:2.11.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
 
-    // OCR (foto do CEP) e leitura de código de barras/QR (scanner de pacotes),
-    // ambos com câmera embutida no app via CameraX (sem abrir o app de câmera do sistema)
+    // OCR (foto do CEP e leitura de etiqueta pro scanner de pacotes), com câmera
+    // embutida no app via CameraX (sem abrir o app de câmera do sistema)
     implementation("com.google.mlkit:text-recognition:16.0.1")
-    implementation("com.google.mlkit:barcode-scanning:17.3.0")
     implementation("androidx.camera:camera-camera2:1.3.4")
     implementation("androidx.camera:camera-lifecycle:1.3.4")
     implementation("androidx.camera:camera-view:1.3.4")

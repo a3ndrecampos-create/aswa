@@ -30,8 +30,8 @@ fun RotaScreen(viewModel: RotaViewModel, onAddClick: () -> Unit) {
     var showPackageScanner by remember { mutableStateOf(false) }
 
     if (showPackageScanner) {
-        PackageScannerDialog(
-            onResult = { code -> showPackageScanner = false; viewModel.scanPackage(code) },
+        CepScannerDialog(
+            onResult = { cep, numero -> showPackageScanner = false; viewModel.scanPackageByLabel(cep, numero) },
             onDismiss = { showPackageScanner = false }
         )
     }
@@ -64,7 +64,7 @@ fun RotaScreen(viewModel: RotaViewModel, onAddClick: () -> Unit) {
         ) {
             Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(4.dp))
-            Text("Escanear pacote")
+            Text("Escanear etiqueta")
         }
         OutlinedButton(
             onClick = {
