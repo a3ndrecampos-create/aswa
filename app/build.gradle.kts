@@ -71,16 +71,8 @@ dependencies {
     implementation("com.squareup.retrofit2:converter-gson:2.11.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
 
-    // Leitura de planilhas .xlsx (leve, sem dependências pesadas de AWT/Swing - funciona em Android)
-    implementation("org.dhatim:fastexcel-reader:0.18.0")
-
-    // Leitura de QR code / código de barras (etiqueta da encomenda)
-    implementation("com.google.mlkit:barcode-scanning:17.3.0")
-    // OCR — opção extra para quando a etiqueta não tem código legível
+    // Leitura de QR code / código de barras removida — agora só OCR (foto -> CEP -> endereço)
     implementation("com.google.mlkit:text-recognition:16.0.1")
-    implementation("androidx.camera:camera-camera2:1.3.4")
-    implementation("androidx.camera:camera-lifecycle:1.3.4")
-    implementation("androidx.camera:camera-view:1.3.4")
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
@@ -88,8 +80,7 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
 
-    // Necessário para o core library desugaring funcionar (habilitado acima)
-    // Usamos a variante "nio" porque o fastexcel-reader (leitura de .xlsx) depende
-    // de classes java.nio.file que não existem nativamente no Android < API 26
+    // Core library desugaring habilitado acima — mantido como rede de segurança
+    // para bibliotecas que usem APIs mais novas do Java em Android antigo.
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.0.4")
 }

@@ -10,7 +10,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -44,18 +43,38 @@ fun AddDeliveryDialog(viewModel: RotaViewModel, onDismiss: () -> Unit) {
             .filter { it.isNotBlank() }.joinToString(", ")
     }
 
-    var showScanner by remember { mutableStateOf(false) }
+    // Busca o endereço a partir de um CEP (usado tanto na digitação manual quanto na foto)
+    fun buscarPorCep(digits: String) {
+        cep = if (digits.length > 5) digits.substring(0, 5) + "-" + digits.substring(5) else digits
+        if (digits.length == 8) {
+            cepHint = "Buscando endereço..."
+            scope.launch {
+                try {
+                    val data = viewModel.lookupCep(digits)
+                    cepData = data
+                    composeFromCep(data)
+                    cepHint = "✓ ${data.logradouro}, ${data.bairro} — ${data.localidade}/${data.uf}"
+                } catch (e: Exception) {
+                    cepHint = e.message ?: "CEP não encontrado"
+                }
+            }
+        } else cepHint = ""
+    }
 
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
         if (bitmap != null) {
             scope.launch {
                 try {
                     val text = OcrHelper.recognize(bitmap)
-                    if (text.isNotBlank()) {
-                        address = text
-                        OcrHelper.extractCep(text)?.let { cep = it }
+                    val cepEncontrado = OcrHelper.extractCep(text)
+                    if (cepEncontrado != null) {
+                        buscarPorCep(cepEncontrado.filter { it.isDigit() })
+                    } else {
+                        cepHint = "Não achei um CEP na foto. Digite manualmente."
                     }
-                } catch (_: Exception) { }
+                } catch (_: Exception) {
+                    cepHint = "Não consegui ler a foto. Tente de novo com mais luz."
+                }
             }
         }
     }
@@ -64,60 +83,29 @@ fun AddDeliveryDialog(viewModel: RotaViewModel, onDismiss: () -> Unit) {
         uri?.let { viewModel.importXlsx(it); onDismiss() }
     }
 
-    if (showScanner) {
-        BarcodeScannerDialog(
-            onResult = { code ->
-                address = code
-                showScanner = false
-            },
-            onDismiss = { showScanner = false }
-        )
-    }
-
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Nova entrega") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { showScanner = true }, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp)); Text("Ler código", style = MaterialTheme.typography.labelMedium)
-                    }
                     OutlinedButton(onClick = { cameraLauncher.launch(null) }, modifier = Modifier.weight(1f)) {
                         Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp)); Text("Ler foto", style = MaterialTheme.typography.labelMedium)
+                        Spacer(Modifier.width(4.dp)); Text("Foto do CEP", style = MaterialTheme.typography.labelMedium)
                     }
-                }
-                Spacer(Modifier.height(8.dp))
-                OutlinedButton(onClick = {
-                    xlsxLauncher.launch("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                }, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp)); Text("Importar .xlsx", style = MaterialTheme.typography.labelMedium)
+                    OutlinedButton(onClick = {
+                        xlsxLauncher.launch("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                    }, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp)); Text("Importar .xlsx", style = MaterialTheme.typography.labelMedium)
+                    }
                 }
                 Spacer(Modifier.height(12.dp))
 
                 OutlinedTextField(
                     value = cep,
-                    onValueChange = { raw ->
-                        val digits = raw.filter { it.isDigit() }.take(8)
-                        cep = if (digits.length > 5) digits.substring(0, 5) + "-" + digits.substring(5) else digits
-                        if (digits.length == 8) {
-                            cepHint = "Buscando endereço..."
-                            scope.launch {
-                                try {
-                                    val data = viewModel.lookupCep(digits)
-                                    cepData = data
-                                    composeFromCep(data)
-                                    cepHint = "✓ ${data.logradouro}, ${data.bairro} — ${data.localidade}/${data.uf}"
-                                } catch (e: Exception) {
-                                    cepHint = e.message ?: "CEP não encontrado"
-                                }
-                            }
-                        } else cepHint = ""
-                    },
-                    label = { Text("CEP (opcional)") },
+                    onValueChange = { raw -> buscarPorCep(raw.filter { it.isDigit() }.take(8)) },
+                    label = { Text("CEP") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     supportingText = { if (cepHint.isNotBlank()) Text(cepHint) },
                     modifier = Modifier.fillMaxWidth()
@@ -126,6 +114,7 @@ fun AddDeliveryDialog(viewModel: RotaViewModel, onDismiss: () -> Unit) {
                     value = numero,
                     onValueChange = { numero = it; cepData?.let { d -> composeFromCep(d) } },
                     label = { Text("Número") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
                 )
                 OutlinedTextField(
