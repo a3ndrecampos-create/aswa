@@ -87,5 +87,7 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
 
     // Necessário para o core library desugaring funcionar (habilitado acima)
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    // Usamos a variante "nio" porque o fastexcel-reader (leitura de .xlsx) depende
+    // de classes java.nio.file que não existem nativamente no Android < API 26
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.0.4")
 }
