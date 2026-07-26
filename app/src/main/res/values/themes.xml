@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.RotaCerta" parent="android:Theme.Material.NoActionBar">
+        <item name="android:statusBarColor">#0F1115</item>
+        <item name="android:windowBackground">#0F1115</item>
+    </style>
+</resources>

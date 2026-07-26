@@ -1,0 +1,37 @@
+package com.rotacerta.entregador.data
+
+import androidx.room.*
+import kotlinx.coroutines.flow.Flow
+
+@Dao
+interface DeliveryDao {
+    @Query("SELECT * FROM deliveries ORDER BY `order` ASC")
+    fun observeAll(): Flow<List<Delivery>>
+
+    @Insert
+    suspend fun insert(delivery: Delivery): Long
+
+    @Update
+    suspend fun update(delivery: Delivery)
+
+    @Update
+    suspend fun updateAll(deliveries: List<Delivery>)
+
+    @Delete
+    suspend fun delete(delivery: Delivery)
+
+    @Query("DELETE FROM deliveries")
+    suspend fun clearAll()
+
+    @Query("SELECT COUNT(*) FROM deliveries")
+    suspend fun count(): Int
+}
+
+@Dao
+interface HistoryDao {
+    @Query("SELECT * FROM history ORDER BY deliveredAt DESC")
+    fun observeAll(): Flow<List<HistoryEntry>>
+
+    @Insert
+    suspend fun insert(entry: HistoryEntry)
+}

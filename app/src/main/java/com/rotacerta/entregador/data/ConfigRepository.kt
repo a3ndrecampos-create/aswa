@@ -1,0 +1,66 @@
+package com.rotacerta.entregador.data
+
+import android.content.Context
+import androidx.datastore.preferences.core.doublePreferencesKey
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+
+enum class Vehicle(val avgSpeedKmh: Double) { MOTO(28.0), CARRO(22.0), BIKE(14.0), PE(5.0) }
+enum class NavApp { GOOGLE, WAZE }
+enum class RouteSortDirection { NEAREST_FIRST, FARTHEST_FIRST }
+
+data class AppConfig(
+    val originAddress: String = "",
+    val originLat: Double? = null,
+    val originLng: Double? = null,
+    val vehicle: Vehicle = Vehicle.MOTO,
+    val navApp: NavApp = NavApp.GOOGLE,
+    val defaultValue: Double = 6.0,
+    val notifications: Boolean = true,
+    val sortDirection: RouteSortDirection = RouteSortDirection.NEAREST_FIRST
+)
+
+private val Context.dataStore by preferencesDataStore(name = "rotacerta_config")
+
+class ConfigRepository(private val context: Context) {
+    private object Keys {
+        val ORIGIN_ADDRESS = stringPreferencesKey("origin_address")
+        val ORIGIN_LAT = doublePreferencesKey("origin_lat")
+        val ORIGIN_LNG = doublePreferencesKey("origin_lng")
+        val VEHICLE = stringPreferencesKey("vehicle")
+        val NAV_APP = stringPreferencesKey("nav_app")
+        val DEFAULT_VALUE = doublePreferencesKey("default_value")
+        val NOTIFICATIONS = booleanPreferencesKey("notifications")
+        val SORT_DIRECTION = stringPreferencesKey("sort_direction")
+    }
+
+    val configFlow: Flow<AppConfig> = context.dataStore.data.map { prefs ->
+        AppConfig(
+            originAddress = prefs[Keys.ORIGIN_ADDRESS] ?: "",
+            originLat = prefs[Keys.ORIGIN_LAT],
+            originLng = prefs[Keys.ORIGIN_LNG],
+            vehicle = prefs[Keys.VEHICLE]?.let { runCatching { Vehicle.valueOf(it) }.getOrNull() } ?: Vehicle.MOTO,
+            navApp = prefs[Keys.NAV_APP]?.let { runCatching { NavApp.valueOf(it) }.getOrNull() } ?: NavApp.GOOGLE,
+            defaultValue = prefs[Keys.DEFAULT_VALUE] ?: 6.0,
+            notifications = prefs[Keys.NOTIFICATIONS] ?: true,
+            sortDirection = prefs[Keys.SORT_DIRECTION]?.let { runCatching { RouteSortDirection.valueOf(it) }.getOrNull() } ?: RouteSortDirection.NEAREST_FIRST
+        )
+    }
+
+    suspend fun update(config: AppConfig) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.ORIGIN_ADDRESS] = config.originAddress
+            config.originLat?.let { prefs[Keys.ORIGIN_LAT] = it } ?: prefs.remove(Keys.ORIGIN_LAT)
+            config.originLng?.let { prefs[Keys.ORIGIN_LNG] = it } ?: prefs.remove(Keys.ORIGIN_LNG)
+            prefs[Keys.VEHICLE] = config.vehicle.name
+            prefs[Keys.NAV_APP] = config.navApp.name
+            prefs[Keys.DEFAULT_VALUE] = config.defaultValue
+            prefs[Keys.NOTIFICATIONS] = config.notifications
+            prefs[Keys.SORT_DIRECTION] = config.sortDirection.name
+        }
+    }
+}
