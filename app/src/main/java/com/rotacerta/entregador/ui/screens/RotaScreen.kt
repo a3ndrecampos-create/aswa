@@ -7,7 +7,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SearchOff
@@ -28,7 +27,6 @@ import com.rotacerta.entregador.ui.components.DeliveryCard
 import com.rotacerta.entregador.ui.components.StatsStrip
 import com.rotacerta.entregador.ui.theme.Accent
 import com.rotacerta.entregador.ui.theme.AccentInk
-import com.rotacerta.entregador.ui.theme.Danger
 import com.rotacerta.entregador.ui.theme.Muted
 import com.rotacerta.entregador.viewmodel.RotaViewModel
 import com.rotacerta.entregador.viewmodel.ScanLabelResult
@@ -43,8 +41,8 @@ fun RotaScreen(viewModel: RotaViewModel, onAddClick: () -> Unit) {
     val scanResult by viewModel.scanLabelResult.collectAsState()
 
     if (showPackageScanner) {
-        CepScannerDialog(
-            onResult = { cep, numero -> showPackageScanner = false; viewModel.scanPackageByLabel(cep, numero) },
+        TrackingScannerDialog(
+            onResult = { code -> showPackageScanner = false; viewModel.scanPackageByTrackingCode(code) },
             onDismiss = { showPackageScanner = false }
         )
     }
@@ -101,10 +99,11 @@ fun RotaScreen(viewModel: RotaViewModel, onAddClick: () -> Unit) {
                             onDelivered = { viewModel.markDelivered(d) },
                             onRemove = { viewModel.removeDelivery(d) },
                             onNavigate = {
+                                val enderecoCodificado = java.net.URLEncoder.encode(d.address, "UTF-8")
                                 val url = if (config.navApp == NavApp.WAZE)
-                                    "https://waze.com/ul?ll=${d.lat},${d.lng}&navigate=yes"
+                                    "https://waze.com/ul?q=$enderecoCodificado&navigate=yes"
                                 else
-                                    "https://www.google.com/maps/dir/?api=1&destination=${d.lat},${d.lng}&travelmode=driving"
+                                    "https://www.google.com/maps/dir/?api=1&destination=$enderecoCodificado&travelmode=driving"
                                 context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, url.toUri()))
                             }
                         )
@@ -171,16 +170,6 @@ private fun ScanResultDialog(result: ScanLabelResult, onDismiss: () -> Unit) {
                             textAlign = TextAlign.Center,
                             modifier = Modifier.padding(horizontal = 8.dp)
                         )
-                        if (result.ambiguous) {
-                            Spacer(Modifier.height(12.dp))
-                            Text(
-                                "⚠️ Havia mais de um endereço com esse CEP. Confira se o número bate" +
-                                    (result.numero?.let { " (lido: $it)" } ?: "") + ".",
-                                fontSize = 13.sp,
-                                color = Danger,
-                                textAlign = TextAlign.Center
-                            )
-                        }
                     }
                     is ScanLabelResult.NotFound -> {
                         Icon(
@@ -189,21 +178,16 @@ private fun ScanResultDialog(result: ScanLabelResult, onDismiss: () -> Unit) {
                         )
                         Spacer(Modifier.height(16.dp))
                         Text(
-                            "Nenhum endereço com o CEP ${result.cep} nesta rota",
+                            "Nenhum pacote com esse código nesta rota",
                             fontSize = 18.sp,
                             fontWeight = FontWeight.SemiBold,
                             textAlign = TextAlign.Center
                         )
-                    }
-                    is ScanLabelResult.InvalidCep -> {
-                        Icon(
-                            Icons.Default.ErrorOutline, contentDescription = null,
-                            modifier = Modifier.size(64.dp), tint = Danger
-                        )
-                        Spacer(Modifier.height(16.dp))
+                        Spacer(Modifier.height(6.dp))
                         Text(
-                            "Não consegui ler o CEP direito. Tente de novo com mais luz e mais perto.",
-                            fontSize = 16.sp,
+                            "Código lido: ${result.code}",
+                            fontSize = 13.sp,
+                            color = Muted,
                             textAlign = TextAlign.Center
                         )
                     }

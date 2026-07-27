@@ -34,7 +34,7 @@ object XlsxImporter {
     private val LAT_KEYS = listOf("latitude", "lat")
     private val LNG_KEYS = listOf("longitude", "lng", "long", "lon")
     private val SEQ_KEYS = listOf("sequence", "sequencia", "sequência", "stop", "ordem", "order")
-    private val TRACKING_KEYS = listOf("spx tn", "tracking", "rastreio", "codigo", "código", "at id", "shipment_id", "shipment id", "tn")
+    private val TRACKING_KEYS = listOf("spx tn", "tracking number", "tracking", "rastreio", "codigo", "código", "shipment_id", "shipment id", "tn")
 
     fun import(context: Context, uri: Uri, defaultValue: Double): List<ImportedRow> {
         val rows = SimpleXlsxReader.readFirstSheet(context, uri)

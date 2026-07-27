@@ -24,8 +24,7 @@ sealed class ImportProgress {
 
 sealed class ScanLabelResult {
     data class Found(val position: Int, val total: Int, val address: String, val ambiguous: Boolean, val numero: String?) : ScanLabelResult()
-    data class NotFound(val cep: String) : ScanLabelResult()
-    data class InvalidCep(val raw: String) : ScanLabelResult()
+    data class NotFound(val code: String) : ScanLabelResult()
 }
 
 class RotaViewModel(app: Application) : AndroidViewModel(app) {
@@ -122,37 +121,25 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---------------- Scanner de pacotes (lê a etiqueta: CEP + número) ----------------
 
-    fun scanPackageByLabel(cep: String, numero: String?) {
+    fun scanPackageByTrackingCode(code: String) {
         viewModelScope.launch {
-            val cepDigits = cep.filter { it.isDigit() }
-            if (cepDigits.length != 8) {
-                _scanLabelResult.value = ScanLabelResult.InvalidCep(cep)
-                return@launch
-            }
-            val cepFormatted = "${cepDigits.substring(0, 5)}-${cepDigits.substring(5)}"
+            val clean = code.trim()
+            if (clean.isBlank()) return@launch
 
             val pendentes = deliveries.value.filter { it.status == DeliveryStatus.PENDENTE }.sortedBy { it.order }
-            var candidatos = pendentes.filter { it.address.contains(cepFormatted) || it.address.contains(cepDigits) }
+            val match = deliveryDao.findByTrackingCode(clean)
+                ?: pendentes.firstOrNull { it.trackingCode.isNotBlank() && (it.trackingCode == clean || clean.contains(it.trackingCode) || it.trackingCode.contains(clean)) }
 
-            if (candidatos.isEmpty()) {
-                _scanLabelResult.value = ScanLabelResult.NotFound(cepFormatted)
+            if (match == null || match.status != DeliveryStatus.PENDENTE) {
+                _scanLabelResult.value = ScanLabelResult.NotFound(clean)
                 return@launch
             }
 
-            var ambiguous = false
-            if (candidatos.size > 1 && !numero.isNullOrBlank()) {
-                val comNumero = candidatos.filter { it.address.contains(", $numero,") || it.address.contains(", $numero ") || it.address.endsWith(", $numero") || it.address.contains(" $numero,") }
-                if (comNumero.isNotEmpty()) candidatos = comNumero else ambiguous = true
-            } else if (candidatos.size > 1) {
-                ambiguous = true
-            }
-
-            val match = candidatos.first()
             val posicao = pendentes.indexOfFirst { it.id == match.id } + 1
             deliveryDao.markVerified(match.id)
             _scanLabelResult.value = ScanLabelResult.Found(
                 position = posicao, total = pendentes.size, address = match.address,
-                ambiguous = ambiguous, numero = numero
+                ambiguous = false, numero = null
             )
         }
     }
