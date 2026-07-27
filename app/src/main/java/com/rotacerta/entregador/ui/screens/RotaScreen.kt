@@ -93,20 +93,40 @@ fun RotaScreen(viewModel: RotaViewModel, onAddClick: () -> Unit) {
             ) {
                 if (pending.isNotEmpty()) {
                     item { SectionLabel("Pendentes (${pending.size})") }
-                    items(pending, key = { it.id }) { d ->
-                        DeliveryCard(
-                            delivery = d,
-                            onDelivered = { viewModel.markDelivered(d) },
-                            onRemove = { viewModel.removeDelivery(d) },
-                            onNavigate = {
-                                val enderecoCodificado = java.net.URLEncoder.encode(d.address, "UTF-8")
-                                val url = if (config.navApp == NavApp.WAZE)
-                                    "https://waze.com/ul?q=$enderecoCodificado&navigate=yes"
-                                else
-                                    "https://www.google.com/maps/dir/?api=1&destination=$enderecoCodificado&travelmode=driving"
-                                context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, url.toUri()))
+                    val gruposPorParada = remember(pending) {
+                        val result = mutableListOf<Pair<Int, List<com.rotacerta.entregador.data.Delivery>>>()
+                        var currentOrder: Int? = null
+                        var bucket = mutableListOf<com.rotacerta.entregador.data.Delivery>()
+                        pending.forEach { d ->
+                            if (d.order != currentOrder) {
+                                if (bucket.isNotEmpty()) result.add(currentOrder!! to bucket)
+                                bucket = mutableListOf()
+                                currentOrder = d.order
                             }
-                        )
+                            bucket.add(d)
+                        }
+                        if (bucket.isNotEmpty()) result.add(currentOrder!! to bucket)
+                        result
+                    }
+                    gruposPorParada.forEach { (stopOrder, itemsNaParada) ->
+                        if (itemsNaParada.size > 1) {
+                            item(key = "stop-$stopOrder") { StopGroupLabel(stopOrder, itemsNaParada.size) }
+                        }
+                        items(itemsNaParada, key = { it.id }) { d ->
+                            DeliveryCard(
+                                delivery = d,
+                                onDelivered = { viewModel.markDelivered(d) },
+                                onRemove = { viewModel.removeDelivery(d) },
+                                onNavigate = {
+                                    val enderecoCodificado = java.net.URLEncoder.encode(d.address, "UTF-8")
+                                    val url = if (config.navApp == NavApp.WAZE)
+                                        "https://waze.com/ul?q=$enderecoCodificado&navigate=yes"
+                                    else
+                                        "https://www.google.com/maps/dir/?api=1&destination=$enderecoCodificado&travelmode=driving"
+                                    context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, url.toUri()))
+                                }
+                            )
+                        }
                     }
                 }
                 if (done.isNotEmpty()) {
@@ -118,6 +138,27 @@ fun RotaScreen(viewModel: RotaViewModel, onAddClick: () -> Unit) {
                 item { Spacer(Modifier.height(80.dp)) }
             }
         }
+    }
+}
+
+@Composable
+private fun StopGroupLabel(stopOrder: Int, count: Int) {
+    Row(
+        Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            "📍 Parada $stopOrder",
+            color = Accent,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+        )
+        Text(
+            "· $count pacotes neste endereço",
+            color = com.rotacerta.entregador.ui.theme.Muted,
+            style = MaterialTheme.typography.labelMedium
+        )
     }
 }
 
@@ -155,21 +196,37 @@ private fun ScanResultDialog(result: ScanLabelResult, onDismiss: () -> Unit) {
                                 color = AccentInk
                             )
                         }
-                        Spacer(Modifier.height(16.dp))
+                        Spacer(Modifier.height(12.dp))
                         Text(
-                            "É a ${result.position}ª parada de ${result.total}",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.SemiBold,
+                            "${result.position}/${result.total}",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Accent
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "Parada ${result.position} de ${result.total}",
+                            fontSize = 15.sp,
+                            color = Muted,
                             textAlign = TextAlign.Center
                         )
                         Spacer(Modifier.height(8.dp))
                         Text(
                             result.address,
                             fontSize = 15.sp,
-                            color = Muted,
+                            fontWeight = FontWeight.SemiBold,
                             textAlign = TextAlign.Center,
                             modifier = Modifier.padding(horizontal = 8.dp)
                         )
+                        if (result.ambiguous) {
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                "📦 Essa parada tem mais de um pacote — confira se pegou todos antes de seguir.",
+                                fontSize = 13.sp,
+                                color = Muted,
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
                     is ScanLabelResult.NotFound -> {
                         Icon(

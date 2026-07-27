@@ -73,7 +73,7 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---------------- CRUD de entregas ----------------
 
-    fun addDelivery(address: String, priority: Priority, deadline: String, value: Double, cepData: CepResponse?, numero: String) {
+    fun addDelivery(address: String, priority: Priority, deadline: String, value: Double, cepData: CepResponse?, numero: String, trackingCode: String = "") {
         viewModelScope.launch {
             try {
                 val geo = GeocodingService.geocode(address, cepData, numero)
@@ -81,7 +81,8 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
                     Delivery(
                         address = address, lat = geo.lat, lng = geo.lng,
                         priority = priority, deadline = deadline,
-                        value = value, approxLocation = geo.approx
+                        value = value, approxLocation = geo.approx,
+                        trackingCode = trackingCode
                     )
                 )
                 _toast.emit(if (geo.approx) "Endereço adicionado (localização aproximada)" else "Endereço adicionado à rota")
@@ -135,11 +136,13 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
 
-            val posicao = pendentes.indexOfFirst { it.id == match.id } + 1
+            val posicao = match.order
+            val totalParadas = pendentes.map { it.order }.distinct().size
+            val pacotesNestaParada = pendentes.count { it.order == match.order }
             deliveryDao.markVerified(match.id)
             _scanLabelResult.value = ScanLabelResult.Found(
-                position = posicao, total = pendentes.size, address = match.address,
-                ambiguous = false, numero = null
+                position = posicao, total = totalParadas, address = match.address,
+                ambiguous = pacotesNestaParada > 1, numero = null
             )
         }
     }
@@ -155,7 +158,7 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
             }
             val cfg = config.value
             val origin = cfg.originLat?.let { lat -> cfg.originLng?.let { lng -> LatLng(lat, lng) } }
-            val optimized = RouteOptimizer.optimize(pending, origin, cfg.sortDirection)
+            val optimized = RouteOptimizer.optimize(pending, origin, cfg.sortDirection, cfg.roundTrip)
             deliveryDao.updateAll(optimized)
             _toast.emit("Rota otimizada! ${optimized.size} paradas reordenadas.")
         }

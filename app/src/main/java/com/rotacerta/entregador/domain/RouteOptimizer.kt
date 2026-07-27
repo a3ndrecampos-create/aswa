@@ -27,9 +27,17 @@ object RouteOptimizer {
      * Com direction = NEAREST_FIRST, a rota sai da mais próxima e vai até a mais distante.
      * Com direction = FARTHEST_FIRST, a rota é invertida: sai da mais distante e termina
      * perto do ponto de partida.
+     * Com roundTrip = true (e origem definida), depois de montar a rota inicial ainda
+     * roda uma otimização extra (2-opt) considerando o trajeto de volta até a origem,
+     * pra evitar cruzamentos bobos que deixariam a volta mais longa que o necessário.
      * Retorna a lista já com o campo `order` atualizado (1-based).
      */
-    fun optimize(pending: List<Delivery>, origin: LatLng?, direction: RouteSortDirection = RouteSortDirection.NEAREST_FIRST): List<Delivery> {
+    fun optimize(
+        pending: List<Delivery>,
+        origin: LatLng?,
+        direction: RouteSortDirection = RouteSortDirection.NEAREST_FIRST,
+        roundTrip: Boolean = false
+    ): List<Delivery> {
         if (pending.size < 2) return pending
         var current = origin ?: LatLng(pending[0].lat, pending[0].lng)
         val remaining = pending.toMutableList()
@@ -50,8 +58,61 @@ object RouteOptimizer {
             current = LatLng(chosen.lat, chosen.lng)
         }
 
-        val finalOrder = if (direction == RouteSortDirection.FARTHEST_FIRST) ordered.reversed() else ordered
-        return finalOrder.mapIndexed { i, d -> d.copy(order = i + 1) }
+        var finalOrder = if (direction == RouteSortDirection.FARTHEST_FIRST) ordered.reversed() else ordered
+
+        if (roundTrip && origin != null && finalOrder.size in 3..80) {
+            finalOrder = twoOptRoundTrip(finalOrder, origin)
+        }
+
+        // Entregas no MESMO endereço (várias encomendas pra um só lugar) ficam
+        // sempre lado a lado na rota — aqui elas recebem o mesmo número de parada,
+        // em vez de números individuais sequenciais.
+        var stopNumber = 0
+        var lastAddress: String? = null
+        return finalOrder.map { d ->
+            if (d.address != lastAddress) {
+                stopNumber++
+                lastAddress = d.address
+            }
+            d.copy(order = stopNumber)
+        }
+    }
+
+    // Melhoria local (2-opt) pro trajeto fechado origem -> paradas -> origem: troca
+    // trechos de posição enquanto isso reduzir a distância total do loop.
+    private fun twoOptRoundTrip(stops: List<Delivery>, origin: LatLng): List<Delivery> {
+        fun loopDistance(r: List<Delivery>): Double {
+            var d = haversineKm(origin.lat, origin.lng, r.first().lat, r.first().lng)
+            for (i in 0 until r.size - 1) d += haversineKm(r[i].lat, r[i].lng, r[i + 1].lat, r[i + 1].lng)
+            d += haversineKm(r.last().lat, r.last().lng, origin.lat, origin.lng)
+            return d
+        }
+
+        var route = stops.toMutableList()
+        var bestDist = loopDistance(route)
+        var improved = true
+        var pass = 0
+        while (improved && pass < 20) {
+            improved = false
+            pass++
+            for (i in 0 until route.size - 1) {
+                for (j in i + 1 until route.size) {
+                    val candidate = route.toMutableList()
+                    var lo = i; var hi = j
+                    while (lo < hi) {
+                        val tmp = candidate[lo]; candidate[lo] = candidate[hi]; candidate[hi] = tmp
+                        lo++; hi--
+                    }
+                    val candidateDist = loopDistance(candidate)
+                    if (candidateDist < bestDist - 1e-9) {
+                        route = candidate
+                        bestDist = candidateDist
+                        improved = true
+                    }
+                }
+            }
+        }
+        return route
     }
 
     data class RouteStats(val pendingCount: Int, val distanceKm: Double, val etaMillis: Long?)

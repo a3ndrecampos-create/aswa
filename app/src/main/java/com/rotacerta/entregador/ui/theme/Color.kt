@@ -17,8 +17,8 @@ private val DarkSurface3 = Color(0xFF262B36)
 private val DarkLine = Color(0xFF2C313D)
 private val DarkTextMain = Color(0xFFF5F6F8)
 private val DarkMuted = Color(0xFF8B93A7)
-private val DarkAccent = Color(0xFFFFC53D)      // amarelo vivo — funciona bem sobre fundo escuro
-private val DarkAccentInk = Color(0xFF1A1300)   // texto escuro sobre o amarelo
+private val DarkAccent = Color(0xFF8B5CF6)      // roxo vívido — funciona bem sobre fundo escuro
+private val DarkAccentInk = Color(0xFFFFFFFF)   // texto branco sobre o roxo
 
 // ---- Tema claro (valores fixos usados para montar a paleta) ----
 private val LightBg = Color(0xFFF7F7F9)
@@ -28,8 +28,8 @@ private val LightSurface3 = Color(0xFFE6E8ED)
 private val LightLine = Color(0xFFDDE0E6)
 private val LightTextMain = Color(0xFF16181D)
 private val LightMuted = Color(0xFF6B7280)
-private val LightAccent = Color(0xFFB45309)     // âmbar mais escuro — mais legível sobre fundo claro
-private val LightAccentInk = Color(0xFFFFFFFF)  // texto branco sobre o âmbar
+private val LightAccent = Color(0xFF7C3AED)     // roxo mais escuro — mais legível sobre fundo claro
+private val LightAccentInk = Color(0xFFFFFFFF)  // texto branco sobre o roxo
 
 data class RotaPalette(
     val bg: Color, val surface: Color, val surface2: Color, val surface3: Color,
