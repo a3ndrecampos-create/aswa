@@ -53,6 +53,21 @@ fun RotaScreen(viewModel: RotaViewModel, onAddClick: () -> Unit) {
 
     val pending = remember(deliveries) { deliveries.filter { it.status == DeliveryStatus.PENDENTE }.sortedBy { it.order } }
     val done = remember(deliveries) { deliveries.filter { it.status == DeliveryStatus.ENTREGUE } }
+    val gruposPorParada = remember(pending) {
+        val result = mutableListOf<Pair<Int, List<com.rotacerta.entregador.data.Delivery>>>()
+        var currentOrder: Int? = null
+        var bucket = mutableListOf<com.rotacerta.entregador.data.Delivery>()
+        pending.forEach { d ->
+            if (d.order != currentOrder) {
+                if (bucket.isNotEmpty()) result.add(currentOrder!! to bucket)
+                bucket = mutableListOf()
+                currentOrder = d.order
+            }
+            bucket.add(d)
+        }
+        if (bucket.isNotEmpty()) result.add(currentOrder!! to bucket)
+        result
+    }
     val stats = viewModel.routeStats()
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
@@ -93,21 +108,6 @@ fun RotaScreen(viewModel: RotaViewModel, onAddClick: () -> Unit) {
             ) {
                 if (pending.isNotEmpty()) {
                     item { SectionLabel("Pendentes (${pending.size})") }
-                    val gruposPorParada = remember(pending) {
-                        val result = mutableListOf<Pair<Int, List<com.rotacerta.entregador.data.Delivery>>>()
-                        var currentOrder: Int? = null
-                        var bucket = mutableListOf<com.rotacerta.entregador.data.Delivery>()
-                        pending.forEach { d ->
-                            if (d.order != currentOrder) {
-                                if (bucket.isNotEmpty()) result.add(currentOrder!! to bucket)
-                                bucket = mutableListOf()
-                                currentOrder = d.order
-                            }
-                            bucket.add(d)
-                        }
-                        if (bucket.isNotEmpty()) result.add(currentOrder!! to bucket)
-                        result
-                    }
                     gruposPorParada.forEach { (stopOrder, itemsNaParada) ->
                         if (itemsNaParada.size > 1) {
                             item(key = "stop-$stopOrder") { StopGroupLabel(stopOrder, itemsNaParada.size) }
