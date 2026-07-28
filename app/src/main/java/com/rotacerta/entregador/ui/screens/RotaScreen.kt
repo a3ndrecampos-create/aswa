@@ -1,5 +1,7 @@
 package com.rotacerta.entregador.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -20,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import com.rotacerta.entregador.data.DeliveryStatus
 import com.rotacerta.entregador.domain.RouteOptimizer
@@ -39,6 +42,19 @@ fun RotaScreen(viewModel: RotaViewModel, onAddClick: () -> Unit) {
     val context = LocalContext.current
     var showPackageScanner by remember { mutableStateOf(false) }
     val scanResult by viewModel.scanLabelResult.collectAsState()
+
+    // Liga o serviço de monitoramento em segundo plano (fica de olho no GPS mesmo
+    // com o app minimizado/em outro app tipo Waze, e mostra o popup "Você chegou"
+    // por cima de tudo). Só liga se já tiver permissão de localização.
+    LaunchedEffect(Unit) {
+        val hasPermission = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        if (hasPermission) {
+            val intent = android.content.Intent(context, com.rotacerta.entregador.service.ArrivalMonitorService::class.java)
+            androidx.core.content.ContextCompat.startForegroundService(context, intent)
+        }
+    }
 
     if (showPackageScanner) {
         TrackingScannerDialog(
@@ -253,3 +269,4 @@ private fun ScanResultDialog(result: ScanLabelResult, onDismiss: () -> Unit) {
         }
     )
 }
+

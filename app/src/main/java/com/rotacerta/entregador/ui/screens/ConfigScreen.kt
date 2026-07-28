@@ -1,6 +1,9 @@
 package com.rotacerta.entregador.ui.screens
 
 import android.Manifest
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -10,11 +13,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.rotacerta.entregador.data.NavApp
 import com.rotacerta.entregador.data.RouteSortDirection
-import com.rotacerta.entregador.data.Vehicle
 import com.rotacerta.entregador.viewmodel.RotaViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -47,6 +50,30 @@ fun ConfigScreen(viewModel: RotaViewModel) {
             modifier = Modifier.fillMaxWidth()
         ) { Text("Usar minha localização atual (GPS)") }
 
+        val context = LocalContext.current
+        var overlayGranted by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
+        LaunchedEffect(Unit) { overlayGranted = Settings.canDrawOverlays(context) }
+
+        Text("Aviso de chegada", style = MaterialTheme.typography.labelLarge)
+        Text(
+            "Pra mostrar \"Você chegou\" por cima de outros apps (tipo o Waze) enquanto você navega, " +
+                "o Android exige uma permissão especial.",
+            style = MaterialTheme.typography.bodySmall,
+            color = com.rotacerta.entregador.ui.theme.Muted
+        )
+        OutlinedButton(
+            onClick = {
+                val intent = Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:${context.packageName}")
+                )
+                context.startActivity(intent)
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(if (overlayGranted) "✓ Sobreposição autorizada" else "Autorizar aparecer sobre outros apps")
+        }
+
         Text("Ordem da rota", style = MaterialTheme.typography.labelLarge)
         SingleChoiceRow(
             options = listOf(
@@ -61,12 +88,6 @@ fun ConfigScreen(viewModel: RotaViewModel) {
             options = listOf("Só ida" to false, "Ida e volta" to true),
             selected = config.roundTrip
         ) { viewModel.updateConfig { c -> c.copy(roundTrip = it) } }
-
-        Text("Veículo", style = MaterialTheme.typography.labelLarge)
-        SingleChoiceRow(
-            options = Vehicle.entries.map { it.name.lowercase().replaceFirstChar { c -> c.uppercase() } to it },
-            selected = config.vehicle
-        ) { viewModel.updateConfig { c -> c.copy(vehicle = it) } }
 
         Text("App de navegação", style = MaterialTheme.typography.labelLarge)
         SingleChoiceRow(

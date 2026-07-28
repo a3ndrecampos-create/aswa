@@ -5,6 +5,9 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Looper
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -60,5 +63,41 @@ object GpsLocationProvider {
         } catch (e: SecurityException) {
             cont.resumeWithException(e)
         }
+    }
+
+    /**
+     * Fluxo contínuo de localização — usado pra detectar quando o entregador
+     * chega perto de uma parada da rota. Atualiza a cada ~12s ou 25m de deslocamento,
+     * o que vier primeiro (equilíbrio entre bateria e precisão pra uso a pé/moto/carro).
+     * Some sozinho quando quem estiver coletando o Flow parar de coletar.
+     */
+    fun locationUpdates(context: Context): Flow<Location> = callbackFlow {
+        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val provider = when {
+            locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) -> LocationManager.GPS_PROVIDER
+            locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) -> LocationManager.NETWORK_PROVIDER
+            else -> null
+        }
+        if (provider == null) {
+            close()
+            return@callbackFlow
+        }
+
+        val listener = object : LocationListener {
+            override fun onLocationChanged(location: Location) { trySend(location) }
+            @Deprecated("Deprecated na API 29, mas necessário para compatibilidade com API 24+")
+            override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) {}
+            override fun onProviderEnabled(provider: String) {}
+            override fun onProviderDisabled(provider: String) {}
+        }
+
+        try {
+            locationManager.requestLocationUpdates(provider, 12_000L, 25f, listener, Looper.getMainLooper())
+        } catch (e: SecurityException) {
+            close(e)
+            return@callbackFlow
+        }
+
+        awaitClose { locationManager.removeUpdates(listener) }
     }
 }
