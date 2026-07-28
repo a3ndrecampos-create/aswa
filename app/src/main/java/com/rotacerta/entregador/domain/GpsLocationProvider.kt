@@ -67,18 +67,20 @@ object GpsLocationProvider {
 
     /**
      * Fluxo contínuo de localização — usado pra detectar quando o entregador
-     * chega perto de uma parada da rota. Atualiza a cada ~12s ou 25m de deslocamento,
-     * o que vier primeiro (equilíbrio entre bateria e precisão pra uso a pé/moto/carro).
+     * chega perto de uma parada da rota. Escuta TODOS os provedores disponíveis
+     * (GPS + rede) ao mesmo tempo, sem filtro de distância mínima — importante,
+     * porque com filtro de distância o Android para de mandar atualizações assim
+     * que o aparelho para de se mover (ex: carro estacionado), e o app nunca fica
+     * sabendo que chegou. Atualiza a cada ~6s, o mais preciso possível.
      * Some sozinho quando quem estiver coletando o Flow parar de coletar.
      */
     fun locationUpdates(context: Context): Flow<Location> = callbackFlow {
         val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        val provider = when {
-            locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) -> LocationManager.GPS_PROVIDER
-            locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) -> LocationManager.NETWORK_PROVIDER
-            else -> null
-        }
-        if (provider == null) {
+
+        val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+            .filter { runCatching { locationManager.isProviderEnabled(it) }.getOrDefault(false) }
+
+        if (providers.isEmpty()) {
             close()
             return@callbackFlow
         }
@@ -92,7 +94,9 @@ object GpsLocationProvider {
         }
 
         try {
-            locationManager.requestLocationUpdates(provider, 12_000L, 25f, listener, Looper.getMainLooper())
+            providers.forEach { provider ->
+                locationManager.requestLocationUpdates(provider, 6_000L, 0f, listener, Looper.getMainLooper())
+            }
         } catch (e: SecurityException) {
             close(e)
             return@callbackFlow

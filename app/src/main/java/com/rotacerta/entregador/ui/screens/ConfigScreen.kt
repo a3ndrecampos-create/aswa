@@ -1,8 +1,10 @@
 package com.rotacerta.entregador.ui.screens
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.PowerManager
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -72,6 +74,30 @@ fun ConfigScreen(viewModel: RotaViewModel) {
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(if (overlayGranted) "✓ Sobreposição autorizada" else "Autorizar aparecer sobre outros apps")
+        }
+
+        val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+        var batteryExempt by remember { mutableStateOf(powerManager.isIgnoringBatteryOptimizations(context.packageName)) }
+        LaunchedEffect(Unit) { batteryExempt = powerManager.isIgnoringBatteryOptimizations(context.packageName) }
+
+        Text(
+            "Alguns celulares (Samsung, Xiaomi e outros) fecham o app sozinho em segundo plano " +
+                "pra economizar bateria — isso impede o aviso de chegada de funcionar quando você " +
+                "está usando outro app pra navegar. Libere abaixo pra evitar isso.",
+            style = MaterialTheme.typography.bodySmall,
+            color = com.rotacerta.entregador.ui.theme.Muted
+        )
+        OutlinedButton(
+            onClick = {
+                val intent = Intent(
+                    Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    Uri.parse("package:${context.packageName}")
+                )
+                context.startActivity(intent)
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(if (batteryExempt) "✓ Sem economia de bateria" else "Não deixar o sistema fechar o app")
         }
 
         Text("Ordem da rota", style = MaterialTheme.typography.labelLarge)

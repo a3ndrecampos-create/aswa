@@ -68,7 +68,12 @@ class ArrivalMonitorService : Service() {
         scope.launch {
             try {
                 GpsLocationProvider.locationUpdates(applicationContext).collect { location ->
-                    checkArrival(location.latitude, location.longitude)
+                    // Ignora leituras muito imprecisas (torre de celular/wifi) pra não
+                    // disparar aviso de chegada errado — só confia em GPS/rede com
+                    // precisão razoável.
+                    if (!location.hasAccuracy() || location.accuracy <= 60f) {
+                        checkArrival(location.latitude, location.longitude)
+                    }
                 }
             } catch (_: Exception) {
                 // Sem permissão ou GPS desligado: o serviço continua vivo (notificação
@@ -123,7 +128,7 @@ class ArrivalMonitorService : Service() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP
-            y = 60
+            y = 90
         }
 
         runCatching { windowManager.addView(card, params) }
@@ -134,78 +139,133 @@ class ArrivalMonitorService : Service() {
         val density = resources.displayMetrics.density
         fun dp(v: Int) = (v * density).toInt()
 
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(18), dp(20), dp(18))
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#1E222B"))
-                cornerRadius = dp(16).toFloat()
-                setStroke(dp(1), Color.parseColor("#8B5CF6"))
-            }
-            val margin = dp(12)
+        val colorBg = Color.parseColor("#1A1D24")
+        val colorAccent = Color.parseColor("#8B5CF6")
+        val colorSuccess = Color.parseColor("#2FA86A")
+        val colorMuted = Color.parseColor("#9099AA")
+        val colorChipBg = Color.parseColor("#242833")
+
+        val outer = LinearLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(margin, margin, margin, margin) }
+            ).apply { val m = dp(14); setMargins(m, m, m, m) }
         }
 
-        root.addView(TextView(this).apply {
-            text = "🎯 Você chegou! — Parada $stopOrder"
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(18), dp(18), dp(16))
+            background = GradientDrawable().apply {
+                setColor(colorBg)
+                cornerRadius = dp(20).toFloat()
+                setStroke(dp(1), Color.parseColor("#33FFFFFF"))
+            }
+            elevation = dp(10).toFloat()
+            outer.addView(this, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ))
+        }
+
+        // Cabeçalho: selo com ícone + título/subtítulo, e um "x" discreto pra fechar
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val badge = TextView(this).apply {
+            text = "📍"
+            textSize = 20f
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(colorAccent) }
+            layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
+        }
+        header.addView(badge)
+        val titleBlock = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                .apply { marginStart = dp(12) }
+        }
+        titleBlock.addView(TextView(this).apply {
+            text = "Você chegou"
             setTextColor(Color.WHITE)
-            textSize = 16f
+            textSize = 17f
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         })
+        titleBlock.addView(TextView(this).apply {
+            text = "Parada $stopOrder da rota"
+            setTextColor(colorAccent)
+            textSize = 12.5f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        })
+        header.addView(titleBlock)
+        header.addView(TextView(this).apply {
+            text = "✕"
+            setTextColor(colorMuted)
+            textSize = 15f
+            setPadding(dp(10), dp(6), dp(6), dp(6))
+            setOnClickListener { removeOverlay() }
+        })
+        root.addView(header)
+
         root.addView(TextView(this).apply {
             text = address
-            setTextColor(Color.parseColor("#A9AFBC"))
+            setTextColor(colorMuted)
             textSize = 13f
-            setPadding(0, dp(4), 0, dp(10))
+            setPadding(dp(52), dp(2), 0, dp(14))
+        })
+
+        // Linha fina separando o cabeçalho da lista de pacotes
+        root.addView(View(this).apply {
+            setBackgroundColor(Color.parseColor("#262A33"))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
+                .apply { bottomMargin = dp(12) }
+        })
+
+        val label = if (packages.size > 1) "PACOTES A ENTREGAR AQUI (${packages.size})" else "PACOTE A ENTREGAR"
+        root.addView(TextView(this).apply {
+            text = label
+            setTextColor(colorMuted)
+            textSize = 10.5f
+            letterSpacing = 0.05f
+            setPadding(0, 0, 0, dp(8))
         })
 
         packages.forEachIndexed { i, d ->
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(12), dp(10), dp(8), dp(10))
+                background = GradientDrawable().apply { setColor(colorChipBg); cornerRadius = dp(12).toFloat() }
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { topMargin = dp(6) }
-                gravity = Gravity.CENTER_VERTICAL
+                ).apply { if (i > 0) topMargin = dp(8) }
             }
             row.addView(TextView(this).apply {
-                text = if (d.trackingCode.isNotBlank()) "📦 ${d.trackingCode}" else "📦 Pacote ${i + 1}"
+                text = if (d.trackingCode.isNotBlank()) d.trackingCode else "Pacote ${i + 1}"
                 setTextColor(Color.WHITE)
                 textSize = 13f
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
             row.addView(Button(this).apply {
-                text = "Entregue"
-                textSize = 12f
+                text = "✓  Entregue"
+                textSize = 12.5f
+                isAllCaps = false
                 setTextColor(Color.WHITE)
-                background = GradientDrawable().apply {
-                    setColor(Color.parseColor("#2FA86A"))
-                    cornerRadius = dp(8).toFloat()
-                }
-                setPadding(dp(14), dp(4), dp(14), dp(4))
+                background = GradientDrawable().apply { setColor(colorSuccess); cornerRadius = dp(10).toFloat() }
+                setPadding(dp(16), dp(6), dp(16), dp(6))
                 minWidth = 0; minimumWidth = 0; minHeight = 0; minimumHeight = 0
+                stateListAnimator = null
                 setOnClickListener { markDelivered(d) }
             })
             root.addView(row)
         }
 
         root.addView(TextView(this).apply {
-            text = "Não esqueça de marcar como entregue pra liberar a próxima parada."
-            setTextColor(Color.parseColor("#8B93A3"))
-            textSize = 11f
-            setPadding(0, dp(10), 0, dp(8))
+            text = "Marque como entregue pra liberar a próxima parada da rota."
+            setTextColor(colorMuted)
+            textSize = 11.5f
+            setPadding(0, dp(12), 0, 0)
         })
 
-        root.addView(Button(this).apply {
-            text = "Fechar"
-            textSize = 12f
-            setTextColor(Color.parseColor("#8B93A3"))
-            background = null
-            setOnClickListener { removeOverlay() }
-        })
-
-        return root
+        return outer
     }
 
     private fun markDelivered(delivery: Delivery) {

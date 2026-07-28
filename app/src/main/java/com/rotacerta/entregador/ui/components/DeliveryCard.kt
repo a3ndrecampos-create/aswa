@@ -6,6 +6,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material3.*
@@ -32,106 +33,119 @@ fun DeliveryCard(
     onNavigate: () -> Unit
 ) {
     val delivered = delivery.status == DeliveryStatus.ENTREGUE
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(Surface)
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (delivered) 0.dp else 2.dp)
     ) {
-        Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Box {
-                Box(
-                    Modifier
-                        .size(26.dp)
-                        .clip(CircleShape)
-                        .background(if (delivered) Success else Surface3),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        if (delivered) "✓" else delivery.order.toString(),
-                        color = if (delivered) Color(0xFF08210F) else TextMain,
-                        fontSize = 12.sp, fontWeight = FontWeight.Bold
-                    )
-                }
-                if (delivery.verified && !delivered) {
+        Box {
+            Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box {
                     Box(
                         Modifier
-                            .size(14.dp)
-                            .align(Alignment.TopEnd)
-                            .offset(x = 4.dp, y = (-4).dp)
+                            .size(28.dp)
                             .clip(CircleShape)
-                            .background(Success),
+                            .background(if (delivered) Success else Accent.copy(alpha = 0.15f)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            Icons.Default.Check, contentDescription = "Conferido pelo scanner",
-                            tint = Color.White, modifier = Modifier.size(10.dp)
-                        )
+                        if (delivered) {
+                            Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                        } else {
+                            Text(delivery.order.toString(), color = Accent, fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    if (delivery.verified && !delivered) {
+                        Box(
+                            Modifier
+                                .size(14.dp)
+                                .align(Alignment.TopEnd)
+                                .offset(x = 4.dp, y = (-4).dp)
+                                .clip(CircleShape)
+                                .background(Success),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.Check, contentDescription = "Conferido pelo scanner",
+                                tint = Color.White, modifier = Modifier.size(10.dp)
+                            )
+                        }
+                    }
+                }
+
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        delivery.address, color = TextMain, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
+                        modifier = Modifier.alpha(if (delivered) 0.5f else 1f).padding(end = 22.dp)
+                    )
+
+                    if (!delivered) {
+                        Row(
+                            Modifier.padding(top = 5.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            PriorityDot(delivery.priority)
+                            Text(fmtBRL(delivery.value), color = RouteColor, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            if (delivery.deadline.isNotBlank()) {
+                                Text("· até ${delivery.deadline}", color = Muted, fontSize = 12.sp)
+                            }
+                        }
+
+                        Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = onDelivered,
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Success)
+                            ) {
+                                Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
+                                Spacer(Modifier.width(4.dp))
+                                Text("Entregue", fontSize = 12.5.sp, color = Color.White)
+                            }
+                            OutlinedButton(
+                                onClick = onNavigate,
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 7.dp),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Icon(Icons.Default.Navigation, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Navegar", fontSize = 12.5.sp)
+                            }
+                        }
                     }
                 }
             }
-            Column(Modifier.weight(1f)) {
-                Text(
-                    delivery.address, color = TextMain, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.alpha(if (delivered) 0.55f else 1f).padding(end = 24.dp)
+
+            IconButton(
+                onClick = onRemove,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp)
+                    .size(26.dp)
+            ) {
+                Icon(
+                    Icons.Outlined.DeleteOutline, contentDescription = "Remover entrega",
+                    modifier = Modifier.size(16.dp), tint = Muted.copy(alpha = 0.6f)
                 )
-                Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    PriorityBadge(delivery.priority)
-                    if (delivery.deadline.isNotBlank()) Badge("até ${delivery.deadline}", Muted)
-                    Badge(fmtBRL(delivery.value), RouteColor)
-                }
-                if (!delivered) {
-                    Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        FilledTonalButton(onClick = onDelivered, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)) {
-                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("Entregue", fontSize = 12.sp)
-                        }
-                        OutlinedButton(onClick = onNavigate, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)) {
-                            Icon(Icons.Default.Navigation, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("Navegar", fontSize = 12.sp)
-                        }
-                    }
-                }
             }
         }
-        IconButton(
-            onClick = onRemove,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(6.dp)
-                .size(28.dp)
-                .clip(CircleShape)
-                .background(Surface2)
-        ) {
-            Icon(
-                Icons.Outlined.DeleteOutline, contentDescription = "Remover entrega",
-                modifier = Modifier.size(15.dp), tint = Muted
-            )
-        }
     }
 }
 
 @Composable
-private fun PriorityBadge(priority: Priority) {
+private fun PriorityDot(priority: Priority) {
     val (label, color) = when (priority) {
-        Priority.ALTA -> "Alta prioridade" to Danger
-        Priority.MEDIA -> "Média prioridade" to Accent
-        Priority.BAIXA -> "Baixa prioridade" to Muted
+        Priority.ALTA -> "Alta" to Danger
+        Priority.MEDIA -> "Média" to Accent
+        Priority.BAIXA -> "Baixa" to Muted
     }
-    Badge(label, color)
-}
-
-@Composable
-private fun Badge(text: String, color: Color) {
-    Text(
-        text, color = color, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold,
-        modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(color.copy(alpha = 0.15f))
-            .padding(horizontal = 8.dp, vertical = 3.dp)
-    )
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Icon(Icons.Default.Circle, contentDescription = null, tint = color, modifier = Modifier.size(7.dp))
+        Text(label, color = Muted, fontSize = 12.sp)
+    }
 }
 
 private fun fmtBRL(v: Double) = "R$ " + String.format(Locale("pt", "BR"), "%.2f", v)

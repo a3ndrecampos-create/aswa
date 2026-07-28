@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.QrCodeScanner
@@ -93,24 +94,34 @@ fun RotaScreen(viewModel: RotaViewModel, onAddClick: () -> Unit) {
             Modifier.fillMaxWidth().padding(top = 14.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Button(onClick = onAddClick, modifier = Modifier.weight(1f)) {
+            Button(
+                onClick = onAddClick,
+                modifier = Modifier.weight(1f).height(50.dp),
+                shape = RoundedCornerShape(14.dp),
+                elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
+            ) {
                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp))
-                Text("Adicionar")
+                Text("Adicionar", fontWeight = FontWeight.SemiBold)
             }
-            OutlinedButton(onClick = { viewModel.optimizeRoute() }, modifier = Modifier.weight(1f)) {
+            OutlinedButton(
+                onClick = { viewModel.optimizeRoute() },
+                modifier = Modifier.weight(1f).height(50.dp),
+                shape = RoundedCornerShape(14.dp)
+            ) {
                 Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(4.dp))
-                Text("Otimizar")
+                Text("Otimizar", fontWeight = FontWeight.SemiBold)
             }
         }
         OutlinedButton(
             onClick = { showPackageScanner = true },
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+            modifier = Modifier.fillMaxWidth().height(48.dp).padding(top = 8.dp),
+            shape = RoundedCornerShape(14.dp)
         ) {
             Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(4.dp))
-            Text("Escanear etiqueta")
+            Text("Escanear etiqueta", fontWeight = FontWeight.SemiBold)
         }
 
         if (deliveries.isEmpty()) {
