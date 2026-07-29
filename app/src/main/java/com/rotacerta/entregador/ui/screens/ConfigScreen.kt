@@ -115,6 +115,34 @@ fun ConfigScreen(viewModel: RotaViewModel) {
             selected = config.roundTrip
         ) { viewModel.updateConfig { c -> c.copy(roundTrip = it) } }
 
+        if (config.roundTrip) {
+            var homeText by remember(config.homeAddress) { mutableStateOf(config.homeAddress) }
+            val homePermissionLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestPermission()
+            ) { granted -> if (granted) viewModel.setHomeFromGps() }
+
+            Text("Destino final (casa)", style = MaterialTheme.typography.labelLarge)
+            Text(
+                "Com \"ida e volta\" ativado, a rota otimizada termina nesse endereço em vez de voltar " +
+                    "pro ponto de partida. Se deixar em branco, volta pro ponto de partida mesmo.",
+                style = MaterialTheme.typography.bodySmall,
+                color = com.rotacerta.entregador.ui.theme.Muted
+            )
+            OutlinedTextField(
+                value = homeText,
+                onValueChange = { homeText = it },
+                label = { Text("Endereço de casa / destino final") },
+                modifier = Modifier.fillMaxWidth(),
+                trailingIcon = {
+                    TextButton(onClick = { viewModel.setHome(homeText) }) { Text("Definir") }
+                }
+            )
+            OutlinedButton(
+                onClick = { homePermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION) },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Usar minha localização atual (GPS)") }
+        }
+
         Text("App de navegação", style = MaterialTheme.typography.labelLarge)
         SingleChoiceRow(
             options = listOf("Google Maps" to NavApp.GOOGLE, "Waze" to NavApp.WAZE),

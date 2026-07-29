@@ -27,16 +27,18 @@ object RouteOptimizer {
      * Com direction = NEAREST_FIRST, a rota sai da mais próxima e vai até a mais distante.
      * Com direction = FARTHEST_FIRST, a rota é invertida: sai da mais distante e termina
      * perto do ponto de partida.
-     * Com roundTrip = true (e origem definida), depois de montar a rota inicial ainda
-     * roda uma otimização extra (2-opt) considerando o trajeto de volta até a origem,
-     * pra evitar cruzamentos bobos que deixariam a volta mais longa que o necessário.
+     * Com roundTrip = true, depois de montar a rota inicial ainda roda uma otimização
+     * extra (2-opt) considerando o trajeto de volta até returnPoint (o endereço de
+     * casa/destino final, se definido — senão usa o próprio ponto de partida), pra
+     * evitar cruzamentos bobos que deixariam a volta mais longa que o necessário.
      * Retorna a lista já com o campo `order` atualizado (1-based).
      */
     fun optimize(
         pending: List<Delivery>,
         origin: LatLng?,
         direction: RouteSortDirection = RouteSortDirection.NEAREST_FIRST,
-        roundTrip: Boolean = false
+        roundTrip: Boolean = false,
+        returnPoint: LatLng? = origin
     ): List<Delivery> {
         if (pending.size < 2) return pending
         var current = origin ?: LatLng(pending[0].lat, pending[0].lng)
@@ -60,8 +62,9 @@ object RouteOptimizer {
 
         var finalOrder = if (direction == RouteSortDirection.FARTHEST_FIRST) ordered.reversed() else ordered
 
-        if (roundTrip && origin != null && finalOrder.size in 3..80) {
-            finalOrder = twoOptRoundTrip(finalOrder, origin)
+        val volta = returnPoint ?: origin
+        if (roundTrip && volta != null && finalOrder.size in 3..80) {
+            finalOrder = twoOptRoundTrip(finalOrder, volta)
         }
 
         // Entregas no MESMO endereço (várias encomendas pra um só lugar) ficam
@@ -117,7 +120,7 @@ object RouteOptimizer {
 
     data class RouteStats(val pendingCount: Int, val distanceKm: Double, val etaMillis: Long?)
 
-    fun computeStats(pending: List<Delivery>, origin: LatLng?, avgSpeedKmh: Double, roundTrip: Boolean = false): RouteStats {
+    fun computeStats(pending: List<Delivery>, origin: LatLng?, avgSpeedKmh: Double, roundTrip: Boolean = false, returnPoint: LatLng? = origin): RouteStats {
         val sorted = pending.sortedBy { it.order }
         var dist = 0.0
         var current = origin ?: sorted.firstOrNull()?.let { LatLng(it.lat, it.lng) }
@@ -125,9 +128,10 @@ object RouteOptimizer {
             current?.let { dist += haversineKm(it.lat, it.lng, d.lat, d.lng) }
             current = LatLng(d.lat, d.lng)
         }
-        if (roundTrip && origin != null && sorted.isNotEmpty()) {
+        val volta = returnPoint ?: origin
+        if (roundTrip && volta != null && sorted.isNotEmpty()) {
             val last = sorted.last()
-            dist += haversineKm(last.lat, last.lng, origin.lat, origin.lng)
+            dist += haversineKm(last.lat, last.lng, volta.lat, volta.lng)
         }
         val travelMin = (dist / avgSpeedKmh) * 60
         val stopMin = sorted.size * 4.0 // tempo médio por parada

@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SearchOff
@@ -42,6 +43,7 @@ fun RotaScreen(viewModel: RotaViewModel, onAddClick: () -> Unit) {
     val config by viewModel.config.collectAsState()
     val context = LocalContext.current
     var showPackageScanner by remember { mutableStateOf(false) }
+    var showMap by remember { mutableStateOf(false) }
     val scanResult by viewModel.scanLabelResult.collectAsState()
 
     // Liga o serviço de monitoramento em segundo plano (fica de olho no GPS mesmo
@@ -66,6 +68,18 @@ fun RotaScreen(viewModel: RotaViewModel, onAddClick: () -> Unit) {
 
     scanResult?.let { result ->
         ScanResultDialog(result, onDismiss = { viewModel.clearScanLabelResult() })
+    }
+
+    if (showMap) {
+        val origin = config.originLat?.let { lat -> config.originLng?.let { lng -> com.rotacerta.entregador.domain.LatLng(lat, lng) } }
+        val returnPoint = config.homeLat?.let { lat -> config.homeLng?.let { lng -> com.rotacerta.entregador.domain.LatLng(lat, lng) } } ?: origin
+        RouteMapDialog(
+            deliveries = deliveries.filter { it.status == DeliveryStatus.PENDENTE },
+            origin = origin,
+            returnPoint = returnPoint,
+            roundTrip = config.roundTrip,
+            onDismiss = { showMap = false }
+        )
     }
 
     val pending = remember(deliveries) { deliveries.filter { it.status == DeliveryStatus.PENDENTE }.sortedBy { it.order } }
@@ -114,14 +128,28 @@ fun RotaScreen(viewModel: RotaViewModel, onAddClick: () -> Unit) {
                 Text("Otimizar", fontWeight = FontWeight.SemiBold)
             }
         }
-        OutlinedButton(
-            onClick = { showPackageScanner = true },
-            modifier = Modifier.fillMaxWidth().height(48.dp).padding(top = 8.dp),
-            shape = RoundedCornerShape(14.dp)
+        Row(
+            Modifier.fillMaxWidth().height(48.dp).padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(4.dp))
-            Text("Escanear etiqueta", fontWeight = FontWeight.SemiBold)
+            OutlinedButton(
+                onClick = { showPackageScanner = true },
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Escanear", fontWeight = FontWeight.SemiBold)
+            }
+            OutlinedButton(
+                onClick = { showMap = true },
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Icon(Icons.Default.Map, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Ver mapa", fontWeight = FontWeight.SemiBold)
+            }
         }
 
         if (deliveries.isEmpty()) {

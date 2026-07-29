@@ -17,6 +17,9 @@ data class AppConfig(
     val originAddress: String = "",
     val originLat: Double? = null,
     val originLng: Double? = null,
+    val homeAddress: String = "",
+    val homeLat: Double? = null,
+    val homeLng: Double? = null,
     val vehicle: Vehicle = Vehicle.MOTO,
     val navApp: NavApp = NavApp.GOOGLE,
     val defaultValue: Double = 6.0,
@@ -33,6 +36,9 @@ class ConfigRepository(private val context: Context) {
         val ORIGIN_ADDRESS = stringPreferencesKey("origin_address")
         val ORIGIN_LAT = doublePreferencesKey("origin_lat")
         val ORIGIN_LNG = doublePreferencesKey("origin_lng")
+        val HOME_ADDRESS = stringPreferencesKey("home_address")
+        val HOME_LAT = doublePreferencesKey("home_lat")
+        val HOME_LNG = doublePreferencesKey("home_lng")
         val VEHICLE = stringPreferencesKey("vehicle")
         val NAV_APP = stringPreferencesKey("nav_app")
         val DEFAULT_VALUE = doublePreferencesKey("default_value")
@@ -47,6 +53,9 @@ class ConfigRepository(private val context: Context) {
             originAddress = prefs[Keys.ORIGIN_ADDRESS] ?: "",
             originLat = prefs[Keys.ORIGIN_LAT],
             originLng = prefs[Keys.ORIGIN_LNG],
+            homeAddress = prefs[Keys.HOME_ADDRESS] ?: "",
+            homeLat = prefs[Keys.HOME_LAT],
+            homeLng = prefs[Keys.HOME_LNG],
             vehicle = prefs[Keys.VEHICLE]?.let { runCatching { Vehicle.valueOf(it) }.getOrNull() } ?: Vehicle.MOTO,
             navApp = prefs[Keys.NAV_APP]?.let { runCatching { NavApp.valueOf(it) }.getOrNull() } ?: NavApp.GOOGLE,
             defaultValue = prefs[Keys.DEFAULT_VALUE] ?: 6.0,
@@ -62,6 +71,9 @@ class ConfigRepository(private val context: Context) {
             prefs[Keys.ORIGIN_ADDRESS] = config.originAddress
             config.originLat?.let { prefs[Keys.ORIGIN_LAT] = it } ?: prefs.remove(Keys.ORIGIN_LAT)
             config.originLng?.let { prefs[Keys.ORIGIN_LNG] = it } ?: prefs.remove(Keys.ORIGIN_LNG)
+            prefs[Keys.HOME_ADDRESS] = config.homeAddress
+            config.homeLat?.let { prefs[Keys.HOME_LAT] = it } ?: prefs.remove(Keys.HOME_LAT)
+            config.homeLng?.let { prefs[Keys.HOME_LNG] = it } ?: prefs.remove(Keys.HOME_LNG)
             prefs[Keys.VEHICLE] = config.vehicle.name
             prefs[Keys.NAV_APP] = config.navApp.name
             prefs[Keys.DEFAULT_VALUE] = config.defaultValue

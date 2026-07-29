@@ -158,7 +158,8 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
             }
             val cfg = config.value
             val origin = cfg.originLat?.let { lat -> cfg.originLng?.let { lng -> LatLng(lat, lng) } }
-            val optimized = RouteOptimizer.optimize(pending, origin, cfg.sortDirection, cfg.roundTrip)
+            val returnPoint = cfg.homeLat?.let { lat -> cfg.homeLng?.let { lng -> LatLng(lat, lng) } } ?: origin
+            val optimized = RouteOptimizer.optimize(pending, origin, cfg.sortDirection, cfg.roundTrip, returnPoint)
             deliveryDao.updateAll(optimized)
             _toast.emit("Rota otimizada! ${optimized.size} paradas reordenadas.")
         }
@@ -167,8 +168,9 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
     fun routeStats(): RouteOptimizer.RouteStats {
         val cfg = config.value
         val origin = cfg.originLat?.let { lat -> cfg.originLng?.let { lng -> LatLng(lat, lng) } }
+        val returnPoint = cfg.homeLat?.let { lat -> cfg.homeLng?.let { lng -> LatLng(lat, lng) } } ?: origin
         val pending = deliveries.value.filter { it.status == DeliveryStatus.PENDENTE }
-        return RouteOptimizer.computeStats(pending, origin, cfg.vehicle.avgSpeedKmh, cfg.roundTrip)
+        return RouteOptimizer.computeStats(pending, origin, cfg.vehicle.avgSpeedKmh, cfg.roundTrip, returnPoint)
     }
 
     // ---------------- Config ----------------
@@ -214,6 +216,45 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
     }
+
+    fun setHome(address: String) {
+        viewModelScope.launch {
+            if (address.isBlank()) {
+                updateConfig { it.copy(homeAddress = "", homeLat = null, homeLng = null) }
+                return@launch
+            }
+            try {
+                val geo = GeocodingService.geocode(address)
+                updateConfig { it.copy(homeAddress = address, homeLat = geo.lat, homeLng = geo.lng) }
+                _toast.emit("Destino final definido")
+            } catch (e: Exception) {
+                _toast.emit("Endereço de destino não encontrado")
+            }
+        }
+    }
+
+    fun setHomeFromGps() {
+        viewModelScope.launch {
+            try {
+                val location = withContext(Dispatchers.IO) {
+                    com.rotacerta.entregador.domain.GpsLocationProvider.getCurrentLocation(getApplication())
+                }
+                updateConfig {
+                    it.copy(
+                        homeAddress = "Minha localização atual (GPS)",
+                        homeLat = location.latitude,
+                        homeLng = location.longitude
+                    )
+                }
+                _toast.emit("Destino final definido pelo GPS")
+            } catch (e: SecurityException) {
+                _toast.emit("Permita o acesso à localização para usar o GPS")
+            } catch (e: Exception) {
+                _toast.emit(e.message ?: "Não foi possível obter sua localização")
+            }
+        }
+    }
+
 
     // ---------------- Importação de planilha (.xlsx) ----------------
 
