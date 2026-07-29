@@ -1,5 +1,6 @@
 package com.rotacerta.entregador.ui.screens
 
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.background
@@ -29,6 +30,10 @@ import com.rotacerta.entregador.domain.LatLng
  * sem precisar de chave de API nem biblioteca pesada de mapa).
  * Marca a origem (🏁), cada parada numerada, e o destino final quando "ida e volta"
  * estiver ativado.
+ *
+ * A própria página HTML mostra "Carregando mapa..." e, se depois de alguns
+ * segundos nada aparecer (sem internet, CDN bloqueado, etc.), troca pra uma
+ * mensagem de erro explicando o motivo — em vez de ficar uma tela branca muda.
  */
 @Composable
 fun RouteMapDialog(
@@ -48,6 +53,13 @@ fun RouteMapDialog(
                         settings.domStorageEnabled = true
                         settings.loadWithOverviewMode = true
                         settings.useWideViewPort = true
+                        settings.cacheMode = WebSettings.LOAD_DEFAULT
+                        settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                        // Alguns provedores de mapa recusam ou tratam diferente o user-agent
+                        // padrão da WebView — usar um user-agent comum de navegador evita isso.
+                        settings.userAgentString =
+                            "Mozilla/5.0 (Linux; Android 12; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) " +
+                                "Chrome/120.0.0.0 Mobile Safari/537.36"
                         webViewClient = WebViewClient()
                         loadDataWithBaseURL(
                             "https://rotacerta.app/",
@@ -86,7 +98,7 @@ private fun buildMapHtml(deliveries: List<Delivery>, origin: LatLng?, returnPoin
     }
 
     if (points.isEmpty()) {
-        return "<html><body style='font-family:sans-serif;text-align:center;padding-top:40%;color:#888'>Sem paradas pra mostrar no mapa.</body></html>"
+        return "<html><body style='font-family:sans-serif;text-align:center;padding-top:40%;color:#888'>Sem paradas pra mostrar no mapa. Importe ou adicione entregas primeiro.</body></html>"
     }
 
     val latlngs = points.joinToString(",") { "[${it.lat},${it.lng}]" }
@@ -105,22 +117,58 @@ private fun buildMapHtml(deliveries: List<Delivery>, origin: LatLng?, returnPoin
         <head>
           <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
           <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-          <style>html,body,#map{height:100%;margin:0;padding:0;background:#eee;}</style>
+          <style>
+            html,body,#map{height:100%;margin:0;padding:0;background:#eee;}
+            #status{
+              position:fixed; top:0; left:0; right:0; bottom:0; z-index:9999;
+              display:flex; align-items:center; justify-content:center; text-align:center;
+              font-family:sans-serif; color:#555; background:#f2f2f2; padding:24px; box-sizing:border-box;
+            }
+          </style>
         </head>
         <body>
+          <div id="status">Carregando mapa...</div>
           <div id="map"></div>
+          <script>
+            // Se der qualquer erro de JavaScript (biblioteca não carregou, etc.),
+            // mostra na tela em vez de ficar tudo branco sem explicação.
+            window.onerror = function(msg) {
+              document.getElementById('status').style.display = 'flex';
+              document.getElementById('status').innerHTML =
+                '⚠️ Não consegui carregar o mapa.<br><br><small>' + msg + '</small><br><br>Verifique sua conexão com a internet.';
+              return true;
+            };
+          </script>
           <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
           <script>
             var map = L.map('map');
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+            var tiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
               maxZoom: 19,
               subdomains: 'abcd',
               attribution: '&copy; OpenStreetMap &copy; CARTO'
             }).addTo(map);
+
             var pts = [$latlngs];
             var poly = L.polyline(pts, {color: '#8B5CF6', weight: 4, opacity: 0.8}).addTo(map);
             map.fitBounds(poly.getBounds(), {padding: [40,40]});
             $markersJs
+
+            var tilesLoaded = false;
+            tiles.on('load', function() {
+              tilesLoaded = true;
+              document.getElementById('status').style.display = 'none';
+            });
+            tiles.on('tileerror', function() {
+              document.getElementById('status').innerHTML =
+                '⚠️ Não consegui carregar as imagens do mapa.<br><br>Verifique sua conexão com a internet e tente de novo.';
+            });
+            // Se depois de 8s nada carregou (nem sucesso nem erro explícito), avisa mesmo assim.
+            setTimeout(function() {
+              if (!tilesLoaded) {
+                document.getElementById('status').innerHTML =
+                  '⚠️ O mapa está demorando pra carregar.<br><br>Verifique sua conexão com a internet.';
+              }
+            }, 8000);
           </script>
         </body>
         </html>

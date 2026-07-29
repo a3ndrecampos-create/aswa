@@ -10,6 +10,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Celebration
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
@@ -84,6 +86,20 @@ fun RotaScreen(viewModel: RotaViewModel, onAddClick: () -> Unit) {
 
     val pending = remember(deliveries) { deliveries.filter { it.status == DeliveryStatus.PENDENTE }.sortedBy { it.order } }
     val done = remember(deliveries) { deliveries.filter { it.status == DeliveryStatus.ENTREGUE } }
+
+    // Mostra o aviso de "rota completa" quando a última entrega pendente é concluída
+    // e "ida e volta" está ligado — lembra a pessoa de voltar pro destino final.
+    var routeCompleteDismissed by remember { mutableStateOf(false) }
+    LaunchedEffect(pending.isEmpty(), done.isNotEmpty()) {
+        if (pending.isNotEmpty()) routeCompleteDismissed = false
+    }
+    if (pending.isEmpty() && done.isNotEmpty() && config.roundTrip && !routeCompleteDismissed) {
+        RouteCompleteDialog(
+            homeAddress = config.homeAddress.ifBlank { config.originAddress },
+            onDismiss = { routeCompleteDismissed = true }
+        )
+    }
+
     val gruposPorParada = remember(pending) {
         val result = mutableListOf<Pair<Int, List<com.rotacerta.entregador.data.Delivery>>>()
         var currentOrder: Int? = null
@@ -302,6 +318,53 @@ private fun ScanResultDialog(result: ScanLabelResult, onDismiss: () -> Unit) {
                             color = Muted,
                             textAlign = TextAlign.Center
                         )
+                    }
+                }
+            }
+        }
+    )
+}
+
+@Composable
+private fun RouteCompleteDialog(homeAddress: String, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Show!") }
+        },
+        text = {
+            Column(
+                Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    Modifier.size(84.dp).clip(CircleShape).background(Accent),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Celebration, contentDescription = null, tint = AccentInk, modifier = Modifier.size(42.dp))
+                }
+                Spacer(Modifier.height(14.dp))
+                Text("Rota completa! 🎉", fontSize = 22.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Todas as entregas foram concluídas.",
+                    fontSize = 14.sp, color = Muted, textAlign = TextAlign.Center
+                )
+                if (homeAddress.isNotBlank()) {
+                    Spacer(Modifier.height(18.dp))
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(com.rotacerta.entregador.ui.theme.Surface2)
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Home, contentDescription = null, tint = Accent, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text("Agora é ida e volta pra:", fontSize = 11.sp, color = Muted)
+                            Text(homeAddress, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
+                        }
                     }
                 }
             }
