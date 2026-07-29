@@ -45,9 +45,12 @@ fun RouteMapDialog(
                 factory = { ctx ->
                     WebView(ctx).apply {
                         settings.javaScriptEnabled = true
+                        settings.domStorageEnabled = true
+                        settings.loadWithOverviewMode = true
+                        settings.useWideViewPort = true
                         webViewClient = WebViewClient()
                         loadDataWithBaseURL(
-                            "https://unpkg.com/",
+                            "https://rotacerta.app/",
                             buildMapHtml(deliveries, origin, returnPoint, roundTrip),
                             "text/html", "UTF-8", null
                         )
@@ -109,9 +112,10 @@ private fun buildMapHtml(deliveries: List<Delivery>, origin: LatLng?, returnPoin
           <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
           <script>
             var map = L.map('map');
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
               maxZoom: 19,
-              attribution: '&copy; OpenStreetMap'
+              subdomains: 'abcd',
+              attribution: '&copy; OpenStreetMap &copy; CARTO'
             }).addTo(map);
             var pts = [$latlngs];
             var poly = L.polyline(pts, {color: '#8B5CF6', weight: 4, opacity: 0.8}).addTo(map);

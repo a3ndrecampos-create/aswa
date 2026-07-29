@@ -146,17 +146,15 @@ class ArrivalMonitorService : Service() {
         val colorChipBg = Color.parseColor("#242833")
 
         val outer = LinearLayout(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { val m = dp(14); setMargins(m, m, m, m) }
+            setPadding(dp(28), 0, dp(28), 0)
         }
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(18), dp(18), dp(16))
+            setPadding(dp(16), dp(16), dp(16), dp(14))
             background = GradientDrawable().apply {
                 setColor(colorBg)
-                cornerRadius = dp(20).toFloat()
+                cornerRadius = dp(18).toFloat()
                 setStroke(dp(1), Color.parseColor("#33FFFFFF"))
             }
             elevation = dp(10).toFloat()
@@ -172,27 +170,27 @@ class ArrivalMonitorService : Service() {
         }
         val badge = TextView(this).apply {
             text = "📍"
-            textSize = 20f
+            textSize = 17f
             gravity = Gravity.CENTER
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(colorAccent) }
-            layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
+            layoutParams = LinearLayout.LayoutParams(dp(34), dp(34))
         }
         header.addView(badge)
         val titleBlock = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                .apply { marginStart = dp(12) }
+                .apply { marginStart = dp(10) }
         }
         titleBlock.addView(TextView(this).apply {
             text = "Você chegou"
             setTextColor(Color.WHITE)
-            textSize = 17f
+            textSize = 15.5f
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         })
         titleBlock.addView(TextView(this).apply {
             text = "Parada $stopOrder da rota"
             setTextColor(colorAccent)
-            textSize = 12.5f
+            textSize = 11.5f
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         })
         header.addView(titleBlock)
@@ -209,7 +207,7 @@ class ArrivalMonitorService : Service() {
             text = address
             setTextColor(colorMuted)
             textSize = 13f
-            setPadding(dp(52), dp(2), 0, dp(14))
+            setPadding(dp(44), dp(2), 0, dp(14))
         })
 
         // Linha fina separando o cabeçalho da lista de pacotes
