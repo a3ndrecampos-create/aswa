@@ -12,7 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Celebration
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SearchOff
@@ -45,7 +45,6 @@ fun RotaScreen(viewModel: RotaViewModel, onAddClick: () -> Unit) {
     val config by viewModel.config.collectAsState()
     val context = LocalContext.current
     var showPackageScanner by remember { mutableStateOf(false) }
-    var showMap by remember { mutableStateOf(false) }
     val scanResult by viewModel.scanLabelResult.collectAsState()
 
     // Liga o serviço de monitoramento em segundo plano (fica de olho no GPS mesmo
@@ -72,18 +71,6 @@ fun RotaScreen(viewModel: RotaViewModel, onAddClick: () -> Unit) {
         ScanResultDialog(result, onDismiss = { viewModel.clearScanLabelResult() })
     }
 
-    if (showMap) {
-        val origin = config.originLat?.let { lat -> config.originLng?.let { lng -> com.rotacerta.entregador.domain.LatLng(lat, lng) } }
-        val returnPoint = config.homeLat?.let { lat -> config.homeLng?.let { lng -> com.rotacerta.entregador.domain.LatLng(lat, lng) } } ?: origin
-        RouteMapDialog(
-            deliveries = deliveries.filter { it.status == DeliveryStatus.PENDENTE },
-            origin = origin,
-            returnPoint = returnPoint,
-            roundTrip = config.roundTrip,
-            onDismiss = { showMap = false }
-        )
-    }
-
     val pending = remember(deliveries) { deliveries.filter { it.status == DeliveryStatus.PENDENTE }.sortedBy { it.order } }
     val done = remember(deliveries) { deliveries.filter { it.status == DeliveryStatus.ENTREGUE } }
 
@@ -94,8 +81,17 @@ fun RotaScreen(viewModel: RotaViewModel, onAddClick: () -> Unit) {
         if (pending.isNotEmpty()) routeCompleteDismissed = false
     }
     if (pending.isEmpty() && done.isNotEmpty() && config.roundTrip && !routeCompleteDismissed) {
+        val homeAddress = config.homeAddress.ifBlank { config.originAddress }
         RouteCompleteDialog(
-            homeAddress = config.homeAddress.ifBlank { config.originAddress },
+            homeAddress = homeAddress,
+            onNavigate = {
+                val enderecoCodificado = java.net.URLEncoder.encode(homeAddress, "UTF-8")
+                val url = if (config.navApp == NavApp.WAZE)
+                    "https://waze.com/ul?q=$enderecoCodificado&navigate=yes"
+                else
+                    "https://www.google.com/maps/dir/?api=1&destination=$enderecoCodificado&travelmode=driving"
+                context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, url.toUri()))
+            },
             onDismiss = { routeCompleteDismissed = true }
         )
     }
@@ -144,28 +140,14 @@ fun RotaScreen(viewModel: RotaViewModel, onAddClick: () -> Unit) {
                 Text("Otimizar", fontWeight = FontWeight.SemiBold)
             }
         }
-        Row(
-            Modifier.fillMaxWidth().height(48.dp).padding(top = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        OutlinedButton(
+            onClick = { showPackageScanner = true },
+            modifier = Modifier.fillMaxWidth().height(48.dp).padding(top = 8.dp),
+            shape = RoundedCornerShape(14.dp)
         ) {
-            OutlinedButton(
-                onClick = { showPackageScanner = true },
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-                shape = RoundedCornerShape(14.dp)
-            ) {
-                Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Escanear", fontWeight = FontWeight.SemiBold)
-            }
-            OutlinedButton(
-                onClick = { showMap = true },
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-                shape = RoundedCornerShape(14.dp)
-            ) {
-                Icon(Icons.Default.Map, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Ver mapa", fontWeight = FontWeight.SemiBold)
-            }
+            Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(4.dp))
+            Text("Escanear etiqueta", fontWeight = FontWeight.SemiBold)
         }
 
         if (deliveries.isEmpty()) {
@@ -326,11 +308,22 @@ private fun ScanResultDialog(result: ScanLabelResult, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun RouteCompleteDialog(homeAddress: String, onDismiss: () -> Unit) {
+private fun RouteCompleteDialog(homeAddress: String, onNavigate: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
-            Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Show!") }
+            Button(
+                onClick = { onNavigate(); onDismiss() },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = homeAddress.isNotBlank()
+            ) {
+                Icon(Icons.Default.Navigation, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Navegar até o destino final")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Fechar") }
         },
         text = {
             Column(

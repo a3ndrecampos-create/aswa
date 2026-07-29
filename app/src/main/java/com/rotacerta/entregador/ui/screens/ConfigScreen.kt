@@ -8,19 +8,46 @@ import android.os.PowerManager
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import com.rotacerta.entregador.data.AppConfig
 import com.rotacerta.entregador.data.NavApp
 import com.rotacerta.entregador.data.RouteSortDirection
+import com.rotacerta.entregador.data.SavedDestination
+import com.rotacerta.entregador.network.CepResponse
+import com.rotacerta.entregador.ui.theme.Muted
 import com.rotacerta.entregador.viewmodel.RotaViewModel
+import kotlinx.coroutines.launch
+
+// Mostra "12345-678" na tela mas guarda só os dígitos — cursor não pula ao digitar.
+private val DestCepVisualTransformation = VisualTransformation { text ->
+    val digits = text.text
+    val formatted = buildString {
+        digits.forEachIndexed { i, c -> if (i == 5) append('-'); append(c) }
+    }
+    val offsetMapping = object : OffsetMapping {
+        override fun originalToTransformed(offset: Int) = if (offset <= 5) offset else offset + 1
+        override fun transformedToOriginal(offset: Int) = if (offset <= 5) offset else (offset - 1).coerceAtLeast(0)
+    }
+    TransformedText(AnnotatedString(formatted), offsetMapping)
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -116,31 +143,114 @@ fun ConfigScreen(viewModel: RotaViewModel) {
         ) { viewModel.updateConfig { c -> c.copy(roundTrip = it) } }
 
         if (config.roundTrip) {
-            var homeText by remember(config.homeAddress) { mutableStateOf(config.homeAddress) }
+            val scope = rememberCoroutineScope()
             val homePermissionLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.RequestPermission()
             ) { granted -> if (granted) viewModel.setHomeFromGps() }
 
             Text("Destino final (casa)", style = MaterialTheme.typography.labelLarge)
             Text(
-                "Com \"ida e volta\" ativado, a rota otimizada termina nesse endereço em vez de voltar " +
-                    "pro ponto de partida. Se deixar em branco, volta pro ponto de partida mesmo.",
+                "Com \"ida e volta\" ativado, a rota otimizada termina no destino selecionado abaixo. " +
+                    "Busque pelo CEP + número em vez de digitar o endereço todo — reduz erro de busca. " +
+                    "Você pode salvar até ${AppConfig.MAX_SAVED_DESTINATIONS} destinos e escolher pra qual voltar.",
                 style = MaterialTheme.typography.bodySmall,
-                color = com.rotacerta.entregador.ui.theme.Muted
+                color = Muted
             )
-            OutlinedTextField(
-                value = homeText,
-                onValueChange = { homeText = it },
-                label = { Text("Endereço de casa / destino final") },
-                modifier = Modifier.fillMaxWidth(),
-                trailingIcon = {
-                    TextButton(onClick = { viewModel.setHome(homeText) }) { Text("Definir") }
+
+            if (config.savedDestinations.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    config.savedDestinations.forEach { dest ->
+                        val isSelected = config.homeAddress == dest.address &&
+                            config.homeLat == dest.lat && config.homeLng == dest.lng
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (isSelected) com.rotacerta.entregador.ui.theme.Accent.copy(alpha = 0.12f) else com.rotacerta.entregador.ui.theme.Surface2)
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = isSelected, onClick = { viewModel.selectSavedDestination(dest) })
+                            Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
+                                Text(dest.label, style = MaterialTheme.typography.labelLarge)
+                                Text(dest.address, style = MaterialTheme.typography.bodySmall, color = Muted, maxLines = 2)
+                            }
+                            IconButton(onClick = { viewModel.removeSavedDestination(dest) }) {
+                                Icon(Icons.Outlined.DeleteOutline, contentDescription = "Remover destino", tint = Muted)
+                            }
+                        }
+                    }
                 }
-            )
-            OutlinedButton(
-                onClick = { homePermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION) },
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Usar minha localização atual (GPS)") }
+            }
+
+            if (config.savedDestinations.size < AppConfig.MAX_SAVED_DESTINATIONS) {
+                var destLabel by remember { mutableStateOf("") }
+                var destCepDigits by remember { mutableStateOf("") }
+                var destNumero by remember { mutableStateOf("") }
+                var destCepData by remember { mutableStateOf<CepResponse?>(null) }
+                var destCepHint by remember { mutableStateOf("") }
+
+                Text(
+                    "Adicionar destino (${config.savedDestinations.size}/${AppConfig.MAX_SAVED_DESTINATIONS})",
+                    style = MaterialTheme.typography.labelMedium
+                )
+                OutlinedTextField(
+                    value = destLabel,
+                    onValueChange = { destLabel = it },
+                    label = { Text("Nome (ex: Casa, Trabalho)") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = destCepDigits,
+                    onValueChange = { raw ->
+                        val digits = raw.filter { it.isDigit() }.take(8)
+                        destCepDigits = digits
+                        if (digits.length == 8) {
+                            destCepHint = "Buscando..."
+                            scope.launch {
+                                try {
+                                    val data = viewModel.lookupCep(digits)
+                                    destCepData = data
+                                    destCepHint = "✓ ${data.logradouro}, ${data.bairro} — ${data.localidade}/${data.uf}"
+                                } catch (e: Exception) {
+                                    destCepData = null
+                                    destCepHint = e.message ?: "CEP não encontrado"
+                                }
+                            }
+                        } else {
+                            destCepData = null
+                            destCepHint = ""
+                        }
+                    },
+                    label = { Text("CEP") },
+                    visualTransformation = DestCepVisualTransformation,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    supportingText = { if (destCepHint.isNotBlank()) Text(destCepHint) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = destNumero,
+                    onValueChange = { destNumero = it },
+                    label = { Text("Número") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Button(
+                    onClick = {
+                        destCepData?.let { data ->
+                            viewModel.addSavedDestination(destLabel, data, destNumero)
+                            destLabel = ""; destCepDigits = ""; destNumero = ""
+                            destCepData = null; destCepHint = ""
+                        }
+                    },
+                    enabled = destCepData != null,
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Salvar destino") }
+
+                OutlinedButton(
+                    onClick = { homePermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION) },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Usar minha localização atual como destino (GPS)") }
+            }
         }
 
         Text("App de navegação", style = MaterialTheme.typography.labelLarge)

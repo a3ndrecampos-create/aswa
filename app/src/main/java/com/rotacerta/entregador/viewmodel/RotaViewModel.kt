@@ -217,22 +217,6 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun setHome(address: String) {
-        viewModelScope.launch {
-            if (address.isBlank()) {
-                updateConfig { it.copy(homeAddress = "", homeLat = null, homeLng = null) }
-                return@launch
-            }
-            try {
-                val geo = GeocodingService.geocode(address)
-                updateConfig { it.copy(homeAddress = address, homeLat = geo.lat, homeLng = geo.lng) }
-                _toast.emit("Destino final definido")
-            } catch (e: Exception) {
-                _toast.emit("Endereço de destino não encontrado")
-            }
-        }
-    }
-
     fun setHomeFromGps() {
         viewModelScope.launch {
             try {
@@ -251,6 +235,48 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
                 _toast.emit("Permita o acesso à localização para usar o GPS")
             } catch (e: Exception) {
                 _toast.emit(e.message ?: "Não foi possível obter sua localização")
+            }
+        }
+    }
+
+    // ---------------- Destinos salvos (até 3, buscados por CEP + número) ----------------
+
+    fun addSavedDestination(label: String, cepData: CepResponse, numero: String) {
+        viewModelScope.launch {
+            val current = config.value.savedDestinations
+            if (current.size >= AppConfig.MAX_SAVED_DESTINATIONS) {
+                _toast.emit("Você já tem ${AppConfig.MAX_SAVED_DESTINATIONS} destinos salvos. Remova um antes de adicionar outro.")
+                return@launch
+            }
+            val nomeLabel = label.ifBlank { "Destino ${current.size + 1}" }
+            val street = cepData.logradouro.orEmpty() + if (numero.isNotBlank()) ", $numero" else ""
+            val enderecoCompleto = listOfNotNull(street, cepData.bairro, cepData.localidade?.let { "$it - ${cepData.uf}" }, cepData.cep)
+                .filter { it.isNotBlank() }.joinToString(", ")
+            try {
+                val geo = GeocodingService.geocode(enderecoCompleto, cepData, numero)
+                val novo = SavedDestination(nomeLabel, enderecoCompleto, geo.lat, geo.lng)
+                updateConfig { it.copy(savedDestinations = it.savedDestinations + novo) }
+                // Se for o primeiro destino salvo, já deixa selecionado como destino ativo
+                if (current.isEmpty()) selectSavedDestination(novo)
+                _toast.emit("Destino \"$nomeLabel\" salvo")
+            } catch (e: Exception) {
+                _toast.emit(e.message ?: "Não foi possível localizar esse endereço")
+            }
+        }
+    }
+
+    fun selectSavedDestination(dest: SavedDestination) {
+        updateConfig { it.copy(homeAddress = dest.address, homeLat = dest.lat, homeLng = dest.lng) }
+    }
+
+    fun removeSavedDestination(dest: SavedDestination) {
+        updateConfig { cfg ->
+            val restante = cfg.savedDestinations.filter { it != dest }
+            // Se o destino removido era o que estava ativo, limpa a seleção
+            if (cfg.homeAddress == dest.address && cfg.homeLat == dest.lat && cfg.homeLng == dest.lng) {
+                cfg.copy(savedDestinations = restante, homeAddress = "", homeLat = null, homeLng = null)
+            } else {
+                cfg.copy(savedDestinations = restante)
             }
         }
     }

@@ -13,6 +13,8 @@ enum class Vehicle(val avgSpeedKmh: Double) { MOTO(28.0), CARRO(22.0), BIKE(14.0
 enum class NavApp { GOOGLE, WAZE }
 enum class RouteSortDirection { NEAREST_FIRST, FARTHEST_FIRST }
 
+data class SavedDestination(val label: String, val address: String, val lat: Double, val lng: Double)
+
 data class AppConfig(
     val originAddress: String = "",
     val originLat: Double? = null,
@@ -20,6 +22,7 @@ data class AppConfig(
     val homeAddress: String = "",
     val homeLat: Double? = null,
     val homeLng: Double? = null,
+    val savedDestinations: List<SavedDestination> = emptyList(),
     val vehicle: Vehicle = Vehicle.MOTO,
     val navApp: NavApp = NavApp.GOOGLE,
     val defaultValue: Double = 6.0,
@@ -27,7 +30,31 @@ data class AppConfig(
     val sortDirection: RouteSortDirection = RouteSortDirection.NEAREST_FIRST,
     val roundTrip: Boolean = false,
     val lightTheme: Boolean = false
-)
+) {
+    companion object {
+        const val MAX_SAVED_DESTINATIONS = 3
+    }
+}
+
+// Codificação simples (sem precisar de biblioteca de JSON) pra guardar a lista
+// de destinos salvos como um texto só no DataStore.
+private const val DEST_FIELD_SEP = "\u0001"
+private const val DEST_ITEM_SEP = "\u0002"
+
+private fun encodeDestinations(list: List<SavedDestination>): String =
+    list.joinToString(DEST_ITEM_SEP) { "${it.label}$DEST_FIELD_SEP${it.address}$DEST_FIELD_SEP${it.lat}$DEST_FIELD_SEP${it.lng}" }
+
+private fun decodeDestinations(raw: String): List<SavedDestination> {
+    if (raw.isBlank()) return emptyList()
+    return raw.split(DEST_ITEM_SEP).mapNotNull { entry ->
+        val parts = entry.split(DEST_FIELD_SEP)
+        if (parts.size == 4) {
+            val lat = parts[2].toDoubleOrNull()
+            val lng = parts[3].toDoubleOrNull()
+            if (lat != null && lng != null) SavedDestination(parts[0], parts[1], lat, lng) else null
+        } else null
+    }
+}
 
 private val Context.dataStore by preferencesDataStore(name = "rotacerta_config")
 
@@ -39,6 +66,7 @@ class ConfigRepository(private val context: Context) {
         val HOME_ADDRESS = stringPreferencesKey("home_address")
         val HOME_LAT = doublePreferencesKey("home_lat")
         val HOME_LNG = doublePreferencesKey("home_lng")
+        val SAVED_DESTINATIONS = stringPreferencesKey("saved_destinations")
         val VEHICLE = stringPreferencesKey("vehicle")
         val NAV_APP = stringPreferencesKey("nav_app")
         val DEFAULT_VALUE = doublePreferencesKey("default_value")
@@ -56,6 +84,7 @@ class ConfigRepository(private val context: Context) {
             homeAddress = prefs[Keys.HOME_ADDRESS] ?: "",
             homeLat = prefs[Keys.HOME_LAT],
             homeLng = prefs[Keys.HOME_LNG],
+            savedDestinations = decodeDestinations(prefs[Keys.SAVED_DESTINATIONS] ?: ""),
             vehicle = prefs[Keys.VEHICLE]?.let { runCatching { Vehicle.valueOf(it) }.getOrNull() } ?: Vehicle.MOTO,
             navApp = prefs[Keys.NAV_APP]?.let { runCatching { NavApp.valueOf(it) }.getOrNull() } ?: NavApp.GOOGLE,
             defaultValue = prefs[Keys.DEFAULT_VALUE] ?: 6.0,
@@ -74,6 +103,7 @@ class ConfigRepository(private val context: Context) {
             prefs[Keys.HOME_ADDRESS] = config.homeAddress
             config.homeLat?.let { prefs[Keys.HOME_LAT] = it } ?: prefs.remove(Keys.HOME_LAT)
             config.homeLng?.let { prefs[Keys.HOME_LNG] = it } ?: prefs.remove(Keys.HOME_LNG)
+            prefs[Keys.SAVED_DESTINATIONS] = encodeDestinations(config.savedDestinations.take(AppConfig.MAX_SAVED_DESTINATIONS))
             prefs[Keys.VEHICLE] = config.vehicle.name
             prefs[Keys.NAV_APP] = config.navApp.name
             prefs[Keys.DEFAULT_VALUE] = config.defaultValue
