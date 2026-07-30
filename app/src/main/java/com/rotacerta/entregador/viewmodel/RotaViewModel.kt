@@ -176,7 +176,7 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
     // ---------------- Config ----------------
 
     fun updateConfig(update: (AppConfig) -> AppConfig) {
-        viewModelScope.launch { configRepo.update(update(config.value)) }
+        viewModelScope.launch { configRepo.update(update) }
     }
 
     fun setOrigin(address: String) {
@@ -255,9 +255,17 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val geo = GeocodingService.geocode(enderecoCompleto, cepData, numero)
                 val novo = SavedDestination(nomeLabel, enderecoCompleto, geo.lat, geo.lng)
-                updateConfig { it.copy(savedDestinations = it.savedDestinations + novo) }
-                // Se for o primeiro destino salvo, já deixa selecionado como destino ativo
-                if (current.isEmpty()) selectSavedDestination(novo)
+                // Tudo numa escrita só (adicionar à lista + selecionar se for o primeiro),
+                // pra evitar duas gravações concorrentes se sobrescreverem uma à outra.
+                updateConfig { cfg ->
+                    val ficaSelecionado = cfg.savedDestinations.isEmpty()
+                    cfg.copy(
+                        savedDestinations = cfg.savedDestinations + novo,
+                        homeAddress = if (ficaSelecionado) novo.address else cfg.homeAddress,
+                        homeLat = if (ficaSelecionado) novo.lat else cfg.homeLat,
+                        homeLng = if (ficaSelecionado) novo.lng else cfg.homeLng
+                    )
+                }
                 _toast.emit("Destino \"$nomeLabel\" salvo")
             } catch (e: Exception) {
                 _toast.emit(e.message ?: "Não foi possível localizar esse endereço")

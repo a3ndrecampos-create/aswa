@@ -230,18 +230,47 @@ class ArrivalMonitorService : Service() {
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(12), dp(10), dp(8), dp(10))
+                setPadding(dp(12), dp(10), dp(10), dp(10))
                 background = GradientDrawable().apply { setColor(colorChipBg); cornerRadius = dp(12).toFloat() }
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply { if (i > 0) topMargin = dp(8) }
             }
+
+            // Selo grande e bem visível com "posição/total" (ex: 1/4) — é a informação
+            // mais importante quando tem vários pacotes na mesma parada.
             row.addView(TextView(this).apply {
-                text = if (d.trackingCode.isNotBlank()) d.trackingCode else "Pacote ${i + 1}"
+                text = "${i + 1}/${packages.size}"
                 setTextColor(Color.WHITE)
-                textSize = 13f
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                textSize = 17f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                gravity = Gravity.CENTER
+                background = GradientDrawable().apply { setColor(colorAccent); cornerRadius = dp(10).toFloat() }
+                setPadding(dp(12), dp(6), dp(12), dp(6))
+                minWidth = dp(46)
             })
+
+            val infoCol = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    .apply { marginStart = dp(12) }
+            }
+            infoCol.addView(TextView(this).apply {
+                text = "Pacote ${i + 1} de ${packages.size}"
+                setTextColor(Color.WHITE)
+                textSize = 14.5f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            })
+            if (d.trackingCode.isNotBlank()) {
+                infoCol.addView(TextView(this).apply {
+                    text = d.trackingCode
+                    setTextColor(colorMuted)
+                    textSize = 12f
+                    setPadding(0, dp(2), 0, 0)
+                })
+            }
+            row.addView(infoCol)
+
             row.addView(Button(this).apply {
                 text = "✓  Entregue"
                 textSize = 12.5f

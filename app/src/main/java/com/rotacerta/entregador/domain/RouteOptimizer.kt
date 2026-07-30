@@ -11,6 +11,10 @@ data class LatLng(val lat: Double, val lng: Double)
 
 object RouteOptimizer {
 
+    // Distância máxima (em metros) pra considerar duas entregas "no mesmo lugar"
+    // (mesmo prédio, apto/bloco diferente) — usado no agrupamento de paradas.
+    private const val SAME_STOP_RADIUS_METERS = 30.0
+
     fun haversineKm(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
         val r = 6371.0
         fun toRad(x: Double) = x * Math.PI / 180
@@ -67,16 +71,21 @@ object RouteOptimizer {
             finalOrder = twoOptRoundTrip(finalOrder, volta)
         }
 
-        // Entregas no MESMO endereço (várias encomendas pra um só lugar) ficam
-        // sempre lado a lado na rota — aqui elas recebem o mesmo número de parada,
-        // em vez de números individuais sequenciais.
+        // Entregas no MESMO prédio/endereço (várias encomendas pra um só lugar, mesmo
+        // que sejam apto/bloco diferentes — ex: mesmo número, apto 12 e apto 34) ficam
+        // sempre lado a lado na rota — aqui elas recebem o mesmo número de parada.
+        // Agrupamos pela COORDENADA (não pelo texto do endereço), porque endereços com
+        // o mesmo número mas complemento diferente (apto/bloco) têm texto diferente
+        // mas são fisicamente o mesmo local.
         var stopNumber = 0
-        var lastAddress: String? = null
+        var lastLat: Double? = null
+        var lastLng: Double? = null
         return finalOrder.map { d ->
-            if (d.address != lastAddress) {
-                stopNumber++
-                lastAddress = d.address
-            }
+            val mesmoLocal = lastLat != null && lastLng != null &&
+                haversineKm(lastLat!!, lastLng!!, d.lat, d.lng) * 1000 <= SAME_STOP_RADIUS_METERS
+            if (!mesmoLocal) stopNumber++
+            lastLat = d.lat
+            lastLng = d.lng
             d.copy(order = stopNumber)
         }
     }

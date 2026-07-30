@@ -76,41 +76,54 @@ class ConfigRepository(private val context: Context) {
         val LIGHT_THEME = booleanPreferencesKey("light_theme")
     }
 
-    val configFlow: Flow<AppConfig> = context.dataStore.data.map { prefs ->
-        AppConfig(
-            originAddress = prefs[Keys.ORIGIN_ADDRESS] ?: "",
-            originLat = prefs[Keys.ORIGIN_LAT],
-            originLng = prefs[Keys.ORIGIN_LNG],
-            homeAddress = prefs[Keys.HOME_ADDRESS] ?: "",
-            homeLat = prefs[Keys.HOME_LAT],
-            homeLng = prefs[Keys.HOME_LNG],
-            savedDestinations = decodeDestinations(prefs[Keys.SAVED_DESTINATIONS] ?: ""),
-            vehicle = prefs[Keys.VEHICLE]?.let { runCatching { Vehicle.valueOf(it) }.getOrNull() } ?: Vehicle.MOTO,
-            navApp = prefs[Keys.NAV_APP]?.let { runCatching { NavApp.valueOf(it) }.getOrNull() } ?: NavApp.GOOGLE,
-            defaultValue = prefs[Keys.DEFAULT_VALUE] ?: 6.0,
-            notifications = prefs[Keys.NOTIFICATIONS] ?: true,
-            sortDirection = prefs[Keys.SORT_DIRECTION]?.let { runCatching { RouteSortDirection.valueOf(it) }.getOrNull() } ?: RouteSortDirection.NEAREST_FIRST,
-            roundTrip = prefs[Keys.ROUND_TRIP] ?: false,
-            lightTheme = prefs[Keys.LIGHT_THEME] ?: false
-        )
+    private fun fromPrefs(prefs: androidx.datastore.preferences.core.Preferences): AppConfig = AppConfig(
+        originAddress = prefs[Keys.ORIGIN_ADDRESS] ?: "",
+        originLat = prefs[Keys.ORIGIN_LAT],
+        originLng = prefs[Keys.ORIGIN_LNG],
+        homeAddress = prefs[Keys.HOME_ADDRESS] ?: "",
+        homeLat = prefs[Keys.HOME_LAT],
+        homeLng = prefs[Keys.HOME_LNG],
+        savedDestinations = decodeDestinations(prefs[Keys.SAVED_DESTINATIONS] ?: ""),
+        vehicle = prefs[Keys.VEHICLE]?.let { runCatching { Vehicle.valueOf(it) }.getOrNull() } ?: Vehicle.MOTO,
+        navApp = prefs[Keys.NAV_APP]?.let { runCatching { NavApp.valueOf(it) }.getOrNull() } ?: NavApp.GOOGLE,
+        defaultValue = prefs[Keys.DEFAULT_VALUE] ?: 6.0,
+        notifications = prefs[Keys.NOTIFICATIONS] ?: true,
+        sortDirection = prefs[Keys.SORT_DIRECTION]?.let { runCatching { RouteSortDirection.valueOf(it) }.getOrNull() } ?: RouteSortDirection.NEAREST_FIRST,
+        roundTrip = prefs[Keys.ROUND_TRIP] ?: false,
+        lightTheme = prefs[Keys.LIGHT_THEME] ?: false
+    )
+
+    val configFlow: Flow<AppConfig> = context.dataStore.data.map { prefs -> fromPrefs(prefs) }
+
+    private fun writeToPrefs(prefs: androidx.datastore.preferences.core.MutablePreferences, config: AppConfig) {
+        prefs[Keys.ORIGIN_ADDRESS] = config.originAddress
+        config.originLat?.let { prefs[Keys.ORIGIN_LAT] = it } ?: prefs.remove(Keys.ORIGIN_LAT)
+        config.originLng?.let { prefs[Keys.ORIGIN_LNG] = it } ?: prefs.remove(Keys.ORIGIN_LNG)
+        prefs[Keys.HOME_ADDRESS] = config.homeAddress
+        config.homeLat?.let { prefs[Keys.HOME_LAT] = it } ?: prefs.remove(Keys.HOME_LAT)
+        config.homeLng?.let { prefs[Keys.HOME_LNG] = it } ?: prefs.remove(Keys.HOME_LNG)
+        prefs[Keys.SAVED_DESTINATIONS] = encodeDestinations(config.savedDestinations.take(AppConfig.MAX_SAVED_DESTINATIONS))
+        prefs[Keys.VEHICLE] = config.vehicle.name
+        prefs[Keys.NAV_APP] = config.navApp.name
+        prefs[Keys.DEFAULT_VALUE] = config.defaultValue
+        prefs[Keys.NOTIFICATIONS] = config.notifications
+        prefs[Keys.SORT_DIRECTION] = config.sortDirection.name
+        prefs[Keys.ROUND_TRIP] = config.roundTrip
+        prefs[Keys.LIGHT_THEME] = config.lightTheme
     }
 
-    suspend fun update(config: AppConfig) {
+    /**
+     * Atualiza a config lendo e escrevendo dentro do MESMO bloco `edit` do DataStore
+     * (que é atômico/serializado internamente) — assim, mesmo que duas telas chamem
+     * update() quase ao mesmo tempo, uma nunca sobrescreve o que a outra acabou de
+     * gravar (o antigo `update(config: AppConfig)` lia um valor em cache que podia
+     * já estar desatualizado quando a escrita de verdade acontecia).
+     */
+    suspend fun update(transform: (AppConfig) -> AppConfig) {
         context.dataStore.edit { prefs ->
-            prefs[Keys.ORIGIN_ADDRESS] = config.originAddress
-            config.originLat?.let { prefs[Keys.ORIGIN_LAT] = it } ?: prefs.remove(Keys.ORIGIN_LAT)
-            config.originLng?.let { prefs[Keys.ORIGIN_LNG] = it } ?: prefs.remove(Keys.ORIGIN_LNG)
-            prefs[Keys.HOME_ADDRESS] = config.homeAddress
-            config.homeLat?.let { prefs[Keys.HOME_LAT] = it } ?: prefs.remove(Keys.HOME_LAT)
-            config.homeLng?.let { prefs[Keys.HOME_LNG] = it } ?: prefs.remove(Keys.HOME_LNG)
-            prefs[Keys.SAVED_DESTINATIONS] = encodeDestinations(config.savedDestinations.take(AppConfig.MAX_SAVED_DESTINATIONS))
-            prefs[Keys.VEHICLE] = config.vehicle.name
-            prefs[Keys.NAV_APP] = config.navApp.name
-            prefs[Keys.DEFAULT_VALUE] = config.defaultValue
-            prefs[Keys.NOTIFICATIONS] = config.notifications
-            prefs[Keys.SORT_DIRECTION] = config.sortDirection.name
-            prefs[Keys.ROUND_TRIP] = config.roundTrip
-            prefs[Keys.LIGHT_THEME] = config.lightTheme
+            val current = fromPrefs(prefs)
+            val updated = transform(current)
+            writeToPrefs(prefs, updated)
         }
     }
 }
