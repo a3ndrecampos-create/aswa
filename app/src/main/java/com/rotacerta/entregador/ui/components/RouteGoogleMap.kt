@@ -69,7 +69,17 @@ fun RouteGoogleMap(
         return
     }
 
-    val cameraPositionState = rememberCameraPositionState()
+    // A câmera precisa nascer já apontando pras paradas. Antes, ela só era reposicionada
+    // dentro de onMapLoaded — que só dispara depois que os tiles terminam de baixar. Até
+    // lá (ou se a rede estiver lenta e isso demorar), a câmera ficava presa no ponto
+    // padrão do Maps (0,0 — no meio do oceano), fazendo os marcadores nunca aparecerem
+    // na tela mesmo com o mapa "funcionando" (o que parecia mapa em branco de novo).
+    val initialCenter = remember(allPoints) {
+        GmsLatLng(allPoints.map { it.latitude }.average(), allPoints.map { it.longitude }.average())
+    }
+    val cameraPositionState = rememberCameraPositionState(key = initialCenter.toString()) {
+        position = com.google.android.gms.maps.model.CameraPosition.fromLatLngZoom(initialCenter, 13f)
+    }
 
     Box(modifier) {
         GoogleMap(
@@ -78,13 +88,12 @@ fun RouteGoogleMap(
             properties = MapProperties(mapType = MapType.NORMAL),
             uiSettings = MapUiSettings(zoomControlsEnabled = true, myLocationButtonEnabled = false, mapToolbarEnabled = false),
             onMapLoaded = {
+                // Ajuste fino: agora que o mapa carregou de verdade, enquadra todas as
+                // paradas com folga (em vez do centro+zoom fixo usado como ponto de
+                // partida acima).
                 runCatching {
                     val bounds = LatLngBounds.Builder().apply { allPoints.forEach { include(it) } }.build()
                     cameraPositionState.move(CameraUpdateFactory.newLatLngBounds(bounds, 120))
-                }.onFailure {
-                    // Acontece quando só existe 1 ponto (bounds "vazio") — nesse caso, centraliza
-                    // nele com um zoom razoável em vez de tentar enquadrar uma área.
-                    cameraPositionState.move(CameraUpdateFactory.newLatLngZoom(allPoints.first(), 15f))
                 }
             }
         ) {
