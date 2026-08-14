@@ -289,6 +289,85 @@ fun ConfigScreen(viewModel: RotaViewModel) {
 
         Divider(Modifier.padding(vertical = 8.dp))
 
+        val backupState by viewModel.backupState.collectAsState()
+        var confirmRestoreUri by remember { mutableStateOf<Uri?>(null) }
+
+        val exportLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.CreateDocument("application/json")
+        ) { uri -> uri?.let { viewModel.exportBackup(it) } }
+
+        val importLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.OpenDocument()
+        ) { uri -> uri?.let { confirmRestoreUri = it } }
+
+        Text("Backup dos dados", style = MaterialTheme.typography.labelLarge)
+        Text(
+            "Salva suas entregas e todo o histórico de ganhos num arquivo que você guarda onde " +
+                "quiser (Drive, e-mail pra si mesmo, etc.). Útil se for trocar de celular ou reinstalar " +
+                "o app.",
+            style = MaterialTheme.typography.bodySmall,
+            color = Muted
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = { exportLauncher.launch(com.rotacerta.entregador.domain.BackupManager.suggestedFileName()) },
+                enabled = backupState !is com.rotacerta.entregador.viewmodel.BackupState.Working,
+                modifier = Modifier.weight(1f)
+            ) { Text("Exportar backup") }
+            OutlinedButton(
+                onClick = { importLauncher.launch(arrayOf("application/json")) },
+                enabled = backupState !is com.rotacerta.entregador.viewmodel.BackupState.Working,
+                modifier = Modifier.weight(1f)
+            ) { Text("Restaurar backup") }
+        }
+        if (backupState is com.rotacerta.entregador.viewmodel.BackupState.Working) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
+        }
+
+        // Confirmação: restaurar é destrutivo, substitui TUDO que já está no app agora.
+        confirmRestoreUri?.let { uri ->
+            AlertDialog(
+                onDismissRequest = { confirmRestoreUri = null },
+                title = { Text("Restaurar este backup?") },
+                text = {
+                    Text(
+                        "Isso vai SUBSTITUIR todas as entregas e todo o histórico de ganhos que estão " +
+                            "no app agora pelo conteúdo do arquivo escolhido. Não pode ser desfeito. " +
+                            "Se quiser manter os dados atuais, exporte um backup deles primeiro."
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        viewModel.importBackup(uri)
+                        confirmRestoreUri = null
+                    }) { Text("Substituir e restaurar", color = com.rotacerta.entregador.ui.theme.Danger) }
+                },
+                dismissButton = { TextButton(onClick = { confirmRestoreUri = null } ) { Text("Cancelar") } }
+            )
+        }
+
+        when (val state = backupState) {
+            is com.rotacerta.entregador.viewmodel.BackupState.RestoreSuccess -> {
+                AlertDialog(
+                    onDismissRequest = { viewModel.resetBackupState() },
+                    title = { Text("Backup restaurado ✔") },
+                    text = { Text("${state.deliveriesCount} entregas e ${state.historyCount} registros de histórico foram restaurados.") },
+                    confirmButton = { TextButton(onClick = { viewModel.resetBackupState() }) { Text("OK") } }
+                )
+            }
+            is com.rotacerta.entregador.viewmodel.BackupState.Error -> {
+                AlertDialog(
+                    onDismissRequest = { viewModel.resetBackupState() },
+                    title = { Text("Não deu certo") },
+                    text = { Text(state.message) },
+                    confirmButton = { TextButton(onClick = { viewModel.resetBackupState() }) { Text("OK") } }
+                )
+            }
+            else -> {}
+        }
+
+        Divider(Modifier.padding(vertical = 8.dp))
+
         var confirmResetHistory by remember { mutableStateOf(false) }
 
         OutlinedButton(

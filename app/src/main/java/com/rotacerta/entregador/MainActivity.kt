@@ -7,14 +7,26 @@ import androidx.activity.viewModels
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -28,6 +40,7 @@ private data class Tab(val route: String, val label: String, val icon: androidx.
 
 private val TABS = listOf(
     Tab("rota", "Rota", Icons.Default.List),
+    Tab("mapa", "Mapa", Icons.Default.Map),
     Tab("historico", "Histórico", Icons.Default.History),
     Tab("config", "Config", Icons.Default.Settings)
 )
@@ -36,6 +49,7 @@ class MainActivity : ComponentActivity() {
     private val viewModel: RotaViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
 
         setContent {
@@ -55,9 +69,33 @@ class MainActivity : ComponentActivity() {
 
                 var showAddDialog by remember { mutableStateOf(false) }
                 val navController = rememberNavController()
+                val isOnline by viewModel.isOnline.collectAsState()
 
                 Scaffold(
                     snackbarHost = { SnackbarHost(snackbarHostState) },
+                    topBar = {
+                        // Discreto: só aparece quando falta internet, já que só a busca de
+                        // endereço novo e os tiles do mapa realmente precisam de rede — o
+                        // resto do app (ver/organizar entregas, marcar entregue, histórico)
+                        // continua funcionando 100% normalmente offline.
+                        AnimatedVisibility(visible = !isOnline) {
+                            Surface(color = com.rotacerta.entregador.ui.theme.Danger.copy(alpha = 0.16f)) {
+                                Row(
+                                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Icon(Icons.Default.CloudOff, contentDescription = null, tint = com.rotacerta.entregador.ui.theme.Danger, modifier = Modifier.size(14.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        "Sem internet — mapa e endereços novos ficam indisponíveis até reconectar",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = com.rotacerta.entregador.ui.theme.Danger
+                                    )
+                                }
+                            }
+                        }
+                    },
                     bottomBar = {
                         NavigationBar {
                             val backStackEntry by navController.currentBackStackEntryAsState()
@@ -81,6 +119,7 @@ class MainActivity : ComponentActivity() {
                 ) { padding ->
                     NavHost(navController = navController, startDestination = "rota", modifier = Modifier.padding(padding)) {
                         composable("rota") { RotaScreen(viewModel, onAddClick = { showAddDialog = true }) }
+                        composable("mapa") { MapScreen(viewModel) }
                         composable("historico") { HistoricoScreen(viewModel) }
                         composable("config") { ConfigScreen(viewModel) }
                     }

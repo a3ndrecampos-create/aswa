@@ -44,9 +44,18 @@ android {
     }
 }
 
+// Faz o Room salvar um .json do schema de cada versão do banco em app/schemas/.
+// É esse histórico que garante que uma futura Migration bata exatamente com o
+// schema real de cada versão, em vez de ser escrita "de memória" e arriscar
+// quebrar a validação do Room (ou pior, corromper dados) no aparelho do usuário.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
     // Core / Compose
     implementation("androidx.core:core-ktx:1.13.1")
+    implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
     implementation("androidx.activity:activity-compose:1.9.1")

@@ -11,6 +11,9 @@ interface DeliveryDao {
     @Insert
     suspend fun insert(delivery: Delivery): Long
 
+    @Insert
+    suspend fun insertAll(deliveries: List<Delivery>)
+
     @Update
     suspend fun update(delivery: Delivery)
 
@@ -40,6 +43,9 @@ interface HistoryDao {
 
     @Insert
     suspend fun insert(entry: HistoryEntry)
+
+    @Insert
+    suspend fun insertAll(entries: List<HistoryEntry>)
 
     @Query("DELETE FROM history")
     suspend fun clearAll()

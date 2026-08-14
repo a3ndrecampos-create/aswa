@@ -6,6 +6,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.rotacerta.entregador.RotaCertaApp
 import com.rotacerta.entregador.data.*
+import com.rotacerta.entregador.domain.BackupManager
+import com.rotacerta.entregador.domain.BackupPayload
 import com.rotacerta.entregador.domain.GeocodingService
 import com.rotacerta.entregador.domain.LatLng
 import com.rotacerta.entregador.domain.RouteOptimizer
@@ -15,6 +17,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+sealed class BackupState {
+    object Idle : BackupState()
+    object Working : BackupState()
+    data class RestoreSuccess(val deliveriesCount: Int, val historyCount: Int) : BackupState()
+    data class Error(val message: String) : BackupState()
+}
 
 sealed class ImportProgress {
     object Idle : ImportProgress()
@@ -54,6 +63,26 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
     private val _toast = MutableSharedFlow<String>()
     val toast: SharedFlow<String> = _toast
 
+    private val _backupState = MutableStateFlow<BackupState>(BackupState.Idle)
+    val backupState: StateFlow<BackupState> = _backupState
+
+    fun resetBackupState() { _backupState.value = BackupState.Idle }
+
+    val isOnline: StateFlow<Boolean> = com.rotacerta.entregador.domain.NetworkMonitor.observe(getApplication())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), com.rotacerta.entregador.domain.NetworkMonitor.isOnline(getApplication()))
+
+    /**
+     * Endereços novos (adicionar manualmente, importar planilha, escanear etiqueta, salvar
+     * destino) sempre exigem localizar o endereço num servidor externo — sem internet, a
+     * chamada ia falhar com um erro de timeout genérico e confuso. Checar antes permite dar
+     * uma mensagem clara e não gastar 10-15s esperando o timeout de rede à toa.
+     */
+    private suspend fun ensureOnlineOrToast(): Boolean {
+        if (com.rotacerta.entregador.domain.NetworkMonitor.isOnline(getApplication())) return true
+        _toast.emit("Sem internet. Pra localizar um endereço novo, conecte-se e tente de novo — suas entregas e o histórico continuam disponíveis normalmente.")
+        return false
+    }
+
     init {
         // Semeia algumas entregas de exemplo na primeira execução, como no app original
         viewModelScope.launch {
@@ -75,6 +104,7 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
 
     fun addDelivery(address: String, priority: Priority, deadline: String, value: Double, cepData: CepResponse?, numero: String, trackingCode: String = "") {
         viewModelScope.launch {
+            if (!ensureOnlineOrToast()) return@launch
             try {
                 val geo = GeocodingService.geocode(address, cepData, numero)
                 deliveryDao.insert(
@@ -165,6 +195,73 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Aplica uma nova ordem de paradas definida manualmente pelo entregador (arrastar
+     * na aba Mapa). Cada grupo em [newStopOrder] é uma parada (podem ser várias entregas
+     * no mesmo endereço); a posição na lista vira o novo número da parada (`order`).
+     */
+    fun reorderStops(newStopOrder: List<List<Delivery>>) {
+        viewModelScope.launch {
+            val updated = newStopOrder.flatMapIndexed { index, group ->
+                group.map { it.copy(order = index + 1) }
+            }
+            if (updated.isNotEmpty()) {
+                deliveryDao.updateAll(updated)
+                _toast.emit("Sequência da rota atualizada.")
+            }
+        }
+    }
+
+    /** Exporta todas as entregas + histórico de ganhos pro arquivo que o usuário escolheu salvar. */
+    fun exportBackup(uri: Uri) {
+        viewModelScope.launch {
+            _backupState.value = BackupState.Working
+            try {
+                val json = BackupManager.serialize(deliveries.value, history.value)
+                withContext(Dispatchers.IO) {
+                    getApplication<android.app.Application>().contentResolver.openOutputStream(uri)?.use {
+                        it.write(json.toByteArray(Charsets.UTF_8))
+                    } ?: throw IllegalStateException("Não consegui abrir o arquivo pra escrita")
+                }
+                _toast.emit("Backup salvo com sucesso.")
+                _backupState.value = BackupState.Idle
+            } catch (e: Exception) {
+                _backupState.value = BackupState.Error(e.message ?: "Não foi possível salvar o backup")
+            }
+        }
+    }
+
+    /**
+     * Restaura um backup escolhido pelo usuário. SUBSTITUI todas as entregas e todo o
+     * histórico atuais pelo conteúdo do arquivo — por isso a UI deve confirmar com o
+     * usuário antes de chamar isso (ação destrutiva e irreversível sobre os dados atuais).
+     */
+    fun importBackup(uri: Uri) {
+        viewModelScope.launch {
+            _backupState.value = BackupState.Working
+            try {
+                val json = withContext(Dispatchers.IO) {
+                    getApplication<android.app.Application>().contentResolver.openInputStream(uri)?.use {
+                        it.bufferedReader(Charsets.UTF_8).readText()
+                    } ?: throw IllegalStateException("Não consegui abrir o arquivo escolhido")
+                }
+                val payload: BackupPayload = BackupManager.deserialize(json)
+                deliveryDao.clearAll()
+                historyDao.clearAll()
+                if (payload.deliveries.isNotEmpty()) deliveryDao.insertAll(payload.deliveries)
+                if (payload.history.isNotEmpty()) historyDao.insertAll(payload.history)
+                _backupState.value = BackupState.RestoreSuccess(payload.deliveries.size, payload.history.size)
+            } catch (e: Exception) {
+                _backupState.value = BackupState.Error(
+                    when (e) {
+                        is com.google.gson.JsonSyntaxException -> "Esse arquivo não é um backup válido do RotaCerta"
+                        else -> e.message ?: "Não foi possível restaurar o backup"
+                    }
+                )
+            }
+        }
+    }
+
     fun routeStats(): RouteOptimizer.RouteStats {
         val cfg = config.value
         val origin = cfg.originLat?.let { lat -> cfg.originLng?.let { lng -> LatLng(lat, lng) } }
@@ -185,6 +282,7 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
                 updateConfig { it.copy(originAddress = "", originLat = null, originLng = null) }
                 return@launch
             }
+            if (!ensureOnlineOrToast()) return@launch
             try {
                 val geo = GeocodingService.geocode(address)
                 updateConfig { it.copy(originAddress = address, originLat = geo.lat, originLng = geo.lng) }
@@ -252,6 +350,7 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
             val street = cepData.logradouro.orEmpty() + if (numero.isNotBlank()) ", $numero" else ""
             val enderecoCompleto = listOfNotNull(street, cepData.bairro, cepData.localidade?.let { "$it - ${cepData.uf}" }, cepData.cep)
                 .filter { it.isNotBlank() }.joinToString(", ")
+            if (!ensureOnlineOrToast()) return@launch
             try {
                 val geo = GeocodingService.geocode(enderecoCompleto, cepData, numero)
                 val novo = SavedDestination(nomeLabel, enderecoCompleto, geo.lat, geo.lng)
@@ -302,6 +401,10 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
                 if (rows.isEmpty()) {
                     _toast.emit("Não encontrei uma coluna de endereço na planilha. Verifique os cabeçalhos.")
                     return@launch
+                }
+                val precisaRede = rows.any { it.lat == null || it.lng == null }
+                if (precisaRede && !com.rotacerta.entregador.domain.NetworkMonitor.isOnline(getApplication())) {
+                    _toast.emit("Sem internet: linhas sem coordenadas na planilha não serão localizadas agora.")
                 }
                 var added = 0
                 var failed = 0

@@ -3,4 +3,16 @@
         <item name="android:statusBarColor">#0F1115</item>
         <item name="android:windowBackground">#0F1115</item>
     </style>
+
+    <!-- Tela de abertura: fundo escuro da identidade visual + ícone do app, some assim
+         que a MainActivity chama installSplashScreen()/super.onCreate(). Sem isso, o
+         Android mostra uma tela branca/preta genérica por uma fração de segundo antes
+         do app aparecer — pequeno detalhe que separa um app "feito às pressas" de um
+         com acabamento profissional. -->
+    <style name="Theme.RotaCerta.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#0F1115</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="windowSplashScreenIconBackgroundColor">#0F1115</item>
+        <item name="postSplashScreenTheme">@style/Theme.RotaCerta</item>
+    </style>
 </resources>

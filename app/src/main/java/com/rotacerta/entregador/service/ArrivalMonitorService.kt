@@ -50,7 +50,12 @@ class ArrivalMonitorService : Service() {
     private lateinit var windowManager: WindowManager
     private lateinit var db: AppDatabase
     private var overlayView: View? = null
-    private val notifiedStops = mutableSetOf<Int>()
+    // Guarda os IDs das entregas (não o número da parada!) já avisadas. O número da
+    // parada (order) é reatribuído toda vez que a rota é reotimizada ou reordenada
+    // manualmente, então usar Int aqui faria uma parada nova "herdar" o número de uma
+    // parada antiga já notificada e nunca mais avisar essa parada nova de verdade.
+    // Os IDs (@PrimaryKey no Room) nunca mudam, então são a chave certa pra isso.
+    private val notifiedDeliveryIds = mutableSetOf<Long>()
 
     override fun onCreate() {
         super.onCreate()
@@ -96,11 +101,13 @@ class ArrivalMonitorService : Service() {
 
         val porParada = pendentes.groupBy { it.order }
         for ((stopOrder, pacotes) in porParada) {
-            if (stopOrder in notifiedStops) continue
+            // Já avisado se TODOS os pacotes desse grupo já foram notificados antes
+            // (com pelo menos um pacote novo no grupo, precisa avisar de novo).
+            if (pacotes.all { it.id in notifiedDeliveryIds }) continue
             val rep = pacotes.first()
             val distMeters = RouteOptimizer.haversineKm(lat, lng, rep.lat, rep.lng) * 1000
             if (distMeters <= ARRIVAL_RADIUS_METERS) {
-                notifiedStops.add(stopOrder)
+                notifiedDeliveryIds.addAll(pacotes.map { it.id })
                 showOverlay(stopOrder, rep.address, pacotes)
                 break
             }
