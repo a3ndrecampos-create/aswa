@@ -106,29 +106,33 @@ fun MapScreen(viewModel: RotaViewModel) {
                     )
                 }
             } else {
-                AndroidView(
-                    modifier = Modifier.fillMaxSize(),
-                    factory = { ctx ->
-                        WebView(ctx).apply {
-                            settings.javaScriptEnabled = true
-                            settings.domStorageEnabled = true
-                            settings.loadWithOverviewMode = true
-                            settings.useWideViewPort = true
-                            settings.cacheMode = WebSettings.LOAD_DEFAULT
-                            settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                            settings.userAgentString =
-                                "Mozilla/5.0 (Linux; Android 12; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) " +
-                                    "Chrome/120.0.0.0 Mobile Safari/537.36"
-                            webViewClient = WebViewClient()
-                            loadDataWithBaseURL("https://rotacerta.app/", mapHtml, "text/html", "UTF-8", null)
+                // key(mapHtml) faz o Compose recriar o WebView (chamando factory de novo)
+                // só quando o HTML realmente muda (reordenar, tocar numa parada). Sem isso,
+                // o `update` do AndroidView roda a CADA recomposição da tela — inclusive
+                // uma logo depois da primeira criação — recarregando a página repetidas
+                // vezes e fazendo o mapa nunca terminar de carregar (fica preso em
+                // "Carregando mapa...", que na prática parece uma tela branca).
+                key(mapHtml) {
+                    AndroidView(
+                        modifier = Modifier.fillMaxSize(),
+                        factory = { ctx ->
+                            WebView(ctx).apply {
+                                setBackgroundColor(android.graphics.Color.parseColor("#0F1115"))
+                                settings.javaScriptEnabled = true
+                                settings.domStorageEnabled = true
+                                settings.loadWithOverviewMode = true
+                                settings.useWideViewPort = true
+                                settings.cacheMode = WebSettings.LOAD_DEFAULT
+                                settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                                settings.userAgentString =
+                                    "Mozilla/5.0 (Linux; Android 12; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) " +
+                                        "Chrome/120.0.0.0 Mobile Safari/537.36"
+                                webViewClient = WebViewClient()
+                                loadDataWithBaseURL("https://rotacerta.app/", mapHtml, "text/html", "UTF-8", null)
+                            }
                         }
-                    },
-                    update = { webView ->
-                        // Recarrega o mapa sempre que a sequência ou o destaque mudam
-                        // (reordenar não move os pontos, só troca os números/realce).
-                        webView.loadDataWithBaseURL("https://rotacerta.app/", mapHtml, "text/html", "UTF-8", null)
-                    }
-                )
+                    )
+                }
             }
         }
 
