@@ -20,11 +20,11 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.rotacerta.entregador.data.Delivery
 import com.rotacerta.entregador.domain.LatLng
-import com.rotacerta.entregador.ui.components.RouteGoogleMap
+import com.rotacerta.entregador.ui.components.RouteMap
 
 /**
- * Mostra a rota inteira num mapa nativo do Google Maps. Marca a origem (🏁), cada
- * parada numerada, e o destino final quando "ida e volta" estiver ativado.
+ * Mostra a rota inteira num mapa nativo (OpenStreetMap via osmdroid). Marca a origem
+ * (🏁), cada parada numerada, e o destino final quando "ida e volta" estiver ativado.
  */
 @Composable
 fun RouteMapDialog(
@@ -36,7 +36,7 @@ fun RouteMapDialog(
 ) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize()) {
-            RouteGoogleMap(
+            RouteMap(
                 deliveries = deliveries,
                 origin = origin,
                 returnPoint = returnPoint,

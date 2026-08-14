@@ -14,7 +14,7 @@ import androidx.compose.ui.unit.dp
 import com.rotacerta.entregador.data.DeliveryStatus
 import com.rotacerta.entregador.domain.LatLng
 import com.rotacerta.entregador.ui.components.ReorderableStopList
-import com.rotacerta.entregador.ui.components.RouteGoogleMap
+import com.rotacerta.entregador.ui.components.RouteMap
 import com.rotacerta.entregador.ui.components.StopGroup
 import com.rotacerta.entregador.ui.theme.*
 import com.rotacerta.entregador.viewmodel.RotaViewModel
@@ -92,7 +92,7 @@ fun MapScreen(viewModel: RotaViewModel) {
                     )
                 }
             } else {
-                RouteGoogleMap(
+                RouteMap(
                     deliveries = stops.flatMapIndexed { idx, group -> group.deliveries.map { it.copy(order = idx + 1) } },
                     origin = origin,
                     returnPoint = returnPoint,
