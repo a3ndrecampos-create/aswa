@@ -13,7 +13,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,6 +51,9 @@ fun RouteMapDialog(
 ) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize()) {
+            var loadFailed by remember { mutableStateOf(false) }
+            var loaded by remember { mutableStateOf(false) }
+
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
                 factory = { ctx ->
@@ -61,7 +69,17 @@ fun RouteMapDialog(
                         settings.userAgentString =
                             "Mozilla/5.0 (Linux; Android 12; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) " +
                                 "Chrome/120.0.0.0 Mobile Safari/537.36"
-                        webViewClient = WebViewClient()
+                        webViewClient = object : WebViewClient() {
+                            override fun onReceivedError(
+                                view: android.webkit.WebView?,
+                                request: android.webkit.WebResourceRequest?,
+                                error: android.webkit.WebResourceError?
+                            ) {
+                                val url = request?.url?.toString().orEmpty()
+                                if (url.contains("unpkg.com") || url.contains("basemaps.cartocdn.com")) loadFailed = true
+                            }
+                            override fun onPageFinished(view: android.webkit.WebView?, url: String?) { loaded = true }
+                        }
                         loadDataWithBaseURL(
                             "https://rotacerta.app/",
                             MapHtmlBuilder.build(deliveries, origin, returnPoint, roundTrip),
@@ -70,6 +88,23 @@ fun RouteMapDialog(
                     }
                 }
             )
+            androidx.compose.runtime.LaunchedEffect(Unit) {
+                kotlinx.coroutines.delay(10_000)
+                if (!loaded) loadFailed = true
+            }
+            if (loadFailed) {
+                androidx.compose.foundation.layout.Column(
+                    Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0xFF0F1115)).padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center
+                ) {
+                    Text(
+                        "Não consegui carregar o mapa.\nVerifique sua conexão com a internet.",
+                        color = androidx.compose.ui.graphics.Color.White,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            }
             IconButton(
                 onClick = onDismiss,
                 modifier = Modifier
