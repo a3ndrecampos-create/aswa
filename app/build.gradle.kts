@@ -1,3 +1,6 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -10,9 +13,9 @@ plugins {
 //   MAPS_API_KEY=sua_chave_aqui
 // Sem isso, o valor fica vazio e o mapa mostra um aviso "for developers" do Google em vez
 // de travar o build — assim ninguém esquece de configurar sem perceber o motivo.
-val localProperties = java.util.Properties().apply {
+val localProperties = Properties().apply {
     val file = rootProject.file("local.properties")
-    if (file.exists()) file.inputStream().use { load(it) }
+    if (file.exists()) FileInputStream(file).use { load(it) }
 }
 val mapsApiKey: String = localProperties.getProperty("MAPS_API_KEY", "")
 
