@@ -4,6 +4,18 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+// A chave do Google Maps NUNCA fica no código-fonte (que vai pro Git) — ela mora só no
+// arquivo local.properties (que está no .gitignore, nunca é versionado). Cada pessoa que
+// clonar o repositório precisa criar esse arquivo na raiz do projeto com a linha:
+//   MAPS_API_KEY=sua_chave_aqui
+// Sem isso, o valor fica vazio e o mapa mostra um aviso "for developers" do Google em vez
+// de travar o build — assim ninguém esquece de configurar sem perceber o motivo.
+val localProperties = java.util.Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+val mapsApiKey: String = localProperties.getProperty("MAPS_API_KEY", "")
+
 android {
     namespace = "com.rotacerta.entregador"
     compileSdk = 34
@@ -14,6 +26,7 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
+        manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
     }
 
     buildTypes {
@@ -90,6 +103,10 @@ dependencies {
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+
+    // Mapa (Google Maps nativo, substitui o WebView+Leaflet usado antes)
+    implementation("com.google.android.gms:play-services-maps:19.0.0")
+    implementation("com.google.maps.android:maps-compose:4.3.3")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
