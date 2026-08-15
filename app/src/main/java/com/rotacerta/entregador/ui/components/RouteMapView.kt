@@ -17,13 +17,35 @@ import com.rotacerta.entregador.data.Delivery
 import com.rotacerta.entregador.domain.LatLng
 import com.rotacerta.entregador.ui.theme.Muted
 import org.osmdroid.config.Configuration
-import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.tileprovider.tilesource.ITileSource
+import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
 import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
+import org.osmdroid.util.MapTileIndex
+import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
 import java.io.File
+
+/**
+ * Estilo de mapa mais clean/moderno que o visual clássico do OpenStreetMap (o mesmo
+ * "Voyager" da CartoDB que já era usado na versão web antiga do mapa) — continua sendo
+ * tiles públicos e gratuitos, só que com um visual mais minimalista.
+ */
+private val VoyagerTileSource: ITileSource = object : OnlineTileSourceBase(
+    "CartoVoyager", 0, 20, 256, ".png",
+    arrayOf(
+        "https://a.basemaps.cartocdn.com/rastertiles/voyager/",
+        "https://b.basemaps.cartocdn.com/rastertiles/voyager/",
+        "https://c.basemaps.cartocdn.com/rastertiles/voyager/",
+        "https://d.basemaps.cartocdn.com/rastertiles/voyager/"
+    )
+) {
+    override fun getTileURLString(pMapTileIndex: Long): String =
+        getBaseUrl() + MapTileIndex.getZoom(pMapTileIndex) + "/" + MapTileIndex.getX(pMapTileIndex) + "/" + MapTileIndex.getY(pMapTileIndex) + mImageFilenameEnding
+}
+
 
 /**
  * Mapa da rota usando osmdroid (mapas do OpenStreetMap, renderização nativa — não é
@@ -68,8 +90,14 @@ fun RouteMap(
             Configuration.getInstance().osmdroidTileCache = File(ctx.cacheDir, "osmdroid")
 
             MapView(ctx).apply {
-                setTileSource(TileSourceFactory.MAPNIK)
+                setTileSource(VoyagerTileSource)
                 setMultiTouchControls(true)
+                // Os botões +/- nativos do osmdroid aparecem como um popup flutuante por
+                // cima de TODA a tela (não ficam presos dentro da área do mapa) — foi isso
+                // que tampava o botão "Editar sequência" ao dar zoom. Como já temos zoom
+                // por pinça (setMultiTouchControls acima), desativamos esses botões extras.
+                zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
+                setBuiltInZoomControls(false)
                 controller.setZoom(13.0)
                 val center = GeoPoint(
                     allPoints.map { it.latitude }.average(),
