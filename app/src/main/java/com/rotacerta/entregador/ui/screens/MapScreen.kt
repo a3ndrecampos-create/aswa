@@ -55,6 +55,32 @@ fun MapScreen(viewModel: RotaViewModel) {
     val origin = config.originLat?.let { lat -> config.originLng?.let { lng -> LatLng(lat, lng) } }
     val returnPoint = config.homeLat?.let { lat -> config.homeLng?.let { lng -> LatLng(lat, lng) } } ?: origin
 
+    // Toque num número (na lista OU no mapa) pra selecionar, toque em outro pra mover
+    // pra lá. Fica aqui na tela-mãe porque tanto a lista quanto os marcadores do mapa
+    // disparam essa mesma lógica.
+    fun handleStopTap(order: Int) {
+        val current = highlightOrder
+        when {
+            current == null -> highlightOrder = order
+            current == order -> highlightOrder = null
+            else -> {
+                val fromIdx = stops.indexOfFirst { it.order == current }
+                val toIdx = stops.indexOfFirst { it.order == order }
+                if (fromIdx != -1 && toIdx != -1 && fromIdx != toIdx) {
+                    val newList = stops.toMutableList()
+                    val item = newList.removeAt(fromIdx)
+                    // Ajusta o destino porque remover o item de origem desloca tudo que
+                    // vinha depois dele uma posição pra trás.
+                    val adjustedTo = if (fromIdx < toIdx) toIdx - 1 else toIdx
+                    newList.add(adjustedTo.coerceIn(0, newList.size), item)
+                    stops = newList
+                    dirty = true
+                }
+                highlightOrder = null
+            }
+        }
+    }
+
     Box(Modifier.fillMaxSize()) {
         // Mapa em tela cheia, sempre do mesmo tamanho — nunca reparte espaço com o resto.
         if (stops.isEmpty()) {
@@ -71,6 +97,7 @@ fun MapScreen(viewModel: RotaViewModel) {
                 returnPoint = returnPoint,
                 roundTrip = config.roundTrip,
                 highlightOrder = highlightOrder,
+                onStopMarkerClick = if (editMode) { order -> handleStopTap(order) } else null,
                 modifier = Modifier.fillMaxSize()
             )
         }
@@ -130,8 +157,10 @@ fun MapScreen(viewModel: RotaViewModel) {
                 HorizontalDivider(color = Line)
                 ReorderableStopList(
                     stops = stops,
+                    selectedOrder = highlightOrder,
                     onReorder = { newList -> stops = newList; dirty = true },
-                    onStopTap = { order -> highlightOrder = if (highlightOrder == order) null else order },
+                    onStopTap = { order -> handleStopTap(order) },
+                    onDragStart = { highlightOrder = null },
                     modifier = Modifier.weight(1f)
                 )
                 Row(

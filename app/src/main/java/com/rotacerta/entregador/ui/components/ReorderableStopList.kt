@@ -39,18 +39,22 @@ private val ROW_HEIGHT = 68.dp
  * Lista de paradas com DUAS formas de reordenar, pra atender tanto quem prefere um
  * jeito rápido quanto quem prefere precisão:
  *
- * 1) TOQUE: toca numa parada pra selecioná-la (fica destacada), toca em outra pra
- *    movê-la pra lá. Mais fácil de acertar numa tela pequena do que arrastar.
- * 2) ARRASTAR: segura o ícone ⠿ e arrasta — como antes, pra quem prefere.
+ * 1) TOQUE: toca numa parada (aqui ou no número dela no mapa) pra selecioná-la, toca
+ *    em outra pra movê-la pra lá. A seleção é compartilhada com o mapa — quem gerencia
+ *    o estado é a tela-mãe (MapScreen), pra tocar no número do mapa e na lista fazerem
+ *    a mesma coisa.
+ * 2) ARRASTAR: segura o ícone ⠿ e arrasta.
  *
- * Ao mover, [onReorder] é chamado com a nova ordem completa. [onStopTap] também
- * dispara a cada toque numa parada, pra realçar ela no mapa por trás.
+ * Ao mover, [onReorder] é chamado com a nova ordem completa. [onStopTap] dispara a
+ * cada toque numa parada — quem decide se isso seleciona ou move é a tela-mãe.
  */
 @Composable
 fun ReorderableStopList(
     stops: List<StopGroup>,
+    selectedOrder: Int?,
     onReorder: (List<StopGroup>) -> Unit,
     onStopTap: (Int) -> Unit,
+    onDragStart: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val density = androidx.compose.ui.platform.LocalDensity.current
@@ -64,27 +68,10 @@ fun ReorderableStopList(
     // mesmo sem reiniciar a coroutine do gesto.
     val latestStops = rememberUpdatedState(stops)
 
-    // Parada selecionada pra mover por toque (null = nenhuma selecionada ainda).
-    var selectedOrder by remember(stops.map { it.order }.toSet()) { mutableStateOf<Int?>(null) }
-
-    fun moveStop(fromOrder: Int, toOrder: Int) {
-        val current = latestStops.value
-        val fromIdx = current.indexOfFirst { it.order == fromOrder }
-        val toIdx = current.indexOfFirst { it.order == toOrder }
-        if (fromIdx == -1 || toIdx == -1 || fromIdx == toIdx) return
-        val newList = current.toMutableList()
-        val item = newList.removeAt(fromIdx)
-        // Ajusta o índice de destino porque remover o item de origem desloca tudo
-        // que vinha depois dele uma posição pra trás.
-        val adjustedTo = if (fromIdx < toIdx) toIdx - 1 else toIdx
-        newList.add(adjustedTo.coerceIn(0, newList.size), item)
-        onReorder(newList)
-    }
-
     Column(modifier) {
         Text(
             if (selectedOrder == null)
-                "Toque numa parada pra selecionar, depois toque em outra pra mover ela pra lá. Ou segure o ⠿ pra arrastar."
+                "Toque numa parada (aqui ou no número dela no mapa) pra selecionar, depois toque em outra pra mover ela pra lá. Ou segure o ⠿ pra arrastar."
             else
                 "Agora toque na parada onde quer colocar essa entrega — ou toque nela de novo pra cancelar.",
             color = if (selectedOrder == null) Muted else Accent,
@@ -119,18 +106,7 @@ fun ReorderableStopList(
                         .let {
                             if (isSelected) it.border(BorderStroke(2.dp, Accent), RoundedCornerShape(14.dp)) else it
                         }
-                        .clickable {
-                            onStopTap(stop.order)
-                            val currentSelection = selectedOrder
-                            selectedOrder = when {
-                                currentSelection == null -> stop.order
-                                currentSelection == stop.order -> null
-                                else -> {
-                                    moveStop(currentSelection, stop.order)
-                                    null
-                                }
-                            }
-                        },
+                        .clickable { onStopTap(stop.order) },
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
@@ -172,7 +148,7 @@ fun ReorderableStopList(
                             .pointerInput(stopOrder) {
                                 detectDragGesturesAfterLongPress(
                                     onDragStart = {
-                                        selectedOrder = null
+                                        onDragStart()
                                         draggedIndex = latestStops.value.indexOfFirst { it.order == stopOrder }
                                         dragOffsetPx = 0f
                                     },

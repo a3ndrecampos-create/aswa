@@ -293,7 +293,7 @@ fun ConfigScreen(viewModel: RotaViewModel) {
         var confirmRestoreUri by remember { mutableStateOf<Uri?>(null) }
 
         val exportLauncher = rememberLauncherForActivityResult(
-            ActivityResultContracts.CreateDocument("application/json")
+            ActivityResultContracts.CreateDocument("text/xml")
         ) { uri -> uri?.let { viewModel.exportBackup(it) } }
 
         val importLauncher = rememberLauncherForActivityResult(
@@ -315,7 +315,7 @@ fun ConfigScreen(viewModel: RotaViewModel) {
                 modifier = Modifier.weight(1f)
             ) { Text("Exportar backup") }
             OutlinedButton(
-                onClick = { importLauncher.launch(arrayOf("application/json")) },
+                onClick = { importLauncher.launch(arrayOf("text/xml", "application/xml", "*/*")) },
                 enabled = backupState !is com.rotacerta.entregador.viewmodel.BackupState.Working,
                 modifier = Modifier.weight(1f)
             ) { Text("Restaurar backup") }

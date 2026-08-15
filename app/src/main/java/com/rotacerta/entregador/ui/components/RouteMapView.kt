@@ -60,6 +60,7 @@ fun RouteMap(
     returnPoint: LatLng?,
     roundTrip: Boolean,
     highlightOrder: Int? = null,
+    onStopMarkerClick: ((Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -120,9 +121,14 @@ fun RouteMap(
                 mapView.overlays.add(pinMarker(mapView, GeoPoint(it.lat, it.lng), "🏁", "#2FA86A"))
             }
             sortedDeliveries.forEach { d ->
-                mapView.overlays.add(
-                    pinMarker(mapView, GeoPoint(d.lat, d.lng), d.order.toString(), "#8B5CF6", highlighted = d.order == highlightOrder)
-                )
+                val marker = pinMarker(mapView, GeoPoint(d.lat, d.lng), d.order.toString(), "#8B5CF6", highlighted = d.order == highlightOrder)
+                if (onStopMarkerClick != null) {
+                    marker.setOnMarkerClickListener { _, _ ->
+                        onStopMarkerClick(d.order)
+                        true // não centraliza/abre balão padrão — só dispara nossa seleção
+                    }
+                }
+                mapView.overlays.add(marker)
             }
             if (roundTrip) {
                 (returnPoint ?: origin)?.let {

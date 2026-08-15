@@ -252,12 +252,7 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
                 if (payload.history.isNotEmpty()) historyDao.insertAll(payload.history)
                 _backupState.value = BackupState.RestoreSuccess(payload.deliveries.size, payload.history.size)
             } catch (e: Exception) {
-                _backupState.value = BackupState.Error(
-                    when (e) {
-                        is com.google.gson.JsonSyntaxException -> "Esse arquivo não é um backup válido do RotaCerta"
-                        else -> e.message ?: "Não foi possível restaurar o backup"
-                    }
-                )
+                _backupState.value = BackupState.Error(e.message ?: "Não foi possível restaurar o backup")
             }
         }
     }
