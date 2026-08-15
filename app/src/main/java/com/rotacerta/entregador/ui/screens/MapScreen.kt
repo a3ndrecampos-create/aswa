@@ -128,12 +128,6 @@ fun MapScreen(viewModel: RotaViewModel) {
                     .background(Bg)
             ) {
                 HorizontalDivider(color = Line)
-                Text(
-                    "Segure o ícone ⠿ e arraste para mudar a ordem das paradas",
-                    color = Muted,
-                    style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                )
                 ReorderableStopList(
                     stops = stops,
                     onReorder = { newList -> stops = newList; dirty = true },
