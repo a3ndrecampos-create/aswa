@@ -33,6 +33,7 @@ fun CepScannerDialog(onResult: (cep: String, numero: String?, trackingCode: Stri
 
     EmbeddedScannerDialog(
         instructions = instructions,
+        found = candidateCep != null,
         onFrame = { imageProxy ->
             val now = System.currentTimeMillis()
             val mediaImage = imageProxy.image

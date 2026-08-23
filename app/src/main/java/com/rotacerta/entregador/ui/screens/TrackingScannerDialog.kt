@@ -19,6 +19,7 @@ fun TrackingScannerDialog(onResult: (String) -> Unit, onDismiss: () -> Unit) {
 
     EmbeddedScannerDialog(
         instructions = "Aponte para o QR code / código de barras do pacote",
+        found = hasResult,
         onFrame = { imageProxy ->
             val mediaImage = imageProxy.image
             if (mediaImage != null && !hasResult) {
