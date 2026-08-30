@@ -1,0 +1,91 @@
+name: Android Build
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Build debug APKs (production + closedTesting)
+        run: gradle assembleDebug --no-daemon
+      - name: Upload APK - production
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-production-debug
+          path: app/build/outputs/apk/production/debug/app-production-debug.apk
+      - name: Upload APK - closedTesting
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-closedtesting-debug
+          path: app/build/outputs/apk/closedTesting/debug/app-closedTesting-debug.apk
+
+  # Gera os .aab ASSINADOS de verdade (o que vai pra Play Console). Só roda quando você
+  # aciona manualmente (aba Actions → "Run workflow") — não em todo push, porque exige as
+  # senhas da keystore e não faz sentido assinar um release a cada commit pequeno.
+  # Exige 4 secrets configurados em Settings → Secrets and variables → Actions:
+  #   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+  # (o workflow "Gerar Keystore" já te dá o valor de ANDROID_KEYSTORE_BASE64 pronto).
+  release:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Decodificar keystore (secret em base64) para arquivo
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > keystore.jks
+
+      - name: Build .aab assinado - produção
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/keystore.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: gradle bundleProductionRelease --no-daemon
+
+      - name: Build .aab assinado - teste fechado
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/keystore.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: gradle bundleClosedTestingRelease --no-daemon
+
+      - name: Apagar a keystore do runner (só existe durante o build, não fica salva em lugar nenhum)
+        if: always()
+        run: rm -f keystore.jks
+
+      - name: Upload .aab - produção
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-production-release-aab
+          path: app/build/outputs/bundle/productionRelease/app-production-release.aab
+
+      - name: Upload .aab - teste fechado
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-closedtesting-release-aab
+          path: app/build/outputs/bundle/closedTestingRelease/app-closedTesting-release.aab
