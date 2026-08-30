@@ -21,7 +21,7 @@ jobs:
         with:
           gradle-version: '8.13'
       - name: Build debug APKs (production + closedTesting)
-        run: gradle assembleDebug --no-daemon
+        run: gradle clean assembleDebug --no-daemon --no-build-cache
       - name: Upload APK - production
         uses: actions/upload-artifact@v4
         with:
@@ -64,7 +64,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: gradle bundleProductionRelease --no-daemon
+        run: gradle bundleProductionRelease --no-daemon --no-build-cache
 
       - name: Build .aab assinado - teste fechado
         env:
@@ -72,7 +72,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: gradle bundleClosedTestingRelease --no-daemon
+        run: gradle bundleClosedTestingRelease --no-daemon --no-build-cache
 
       - name: Apagar a keystore do runner (só existe durante o build, não fica salva em lugar nenhum)
         if: always()
