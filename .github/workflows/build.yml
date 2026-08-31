@@ -20,15 +20,8 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
-          cache-disabled: true
-      # --max-workers=1 força as tarefas a rodarem uma de cada vez (não em paralelo).
-      # Sem isso, as variantes "production" e "closedTesting" compilam ao mesmo tempo e
-      # as duas tentam escrever o schema do Room na mesma pasta simultaneamente — uma
-      # tarefa podia ler o arquivo bem no instante em que a outra ainda estava escrevendo
-      # nele, e achava um JSON vazio (erro "Expected start of the object '{', but had
-      # 'EOF' instead"). O build fica um pouco mais lento, mas fica confiável.
       - name: Build debug APKs (production + closedTesting)
-        run: gradle clean assembleDebug --no-daemon --no-build-cache --max-workers=1
+        run: gradle assembleDebug --no-daemon
       - name: Upload APK - production
         uses: actions/upload-artifact@v4
         with:
@@ -61,7 +54,6 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
-          cache-disabled: true
 
       - name: Decodificar keystore (secret em base64) para arquivo
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > keystore.jks
@@ -72,7 +64,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: gradle bundleProductionRelease --no-daemon --no-build-cache --max-workers=1
+        run: gradle bundleProductionRelease --no-daemon
 
       - name: Build .aab assinado - teste fechado
         env:
@@ -80,7 +72,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: gradle bundleClosedTestingRelease --no-daemon --no-build-cache --max-workers=1
+        run: gradle bundleClosedTestingRelease --no-daemon
 
       - name: Apagar a keystore do runner (só existe durante o build, não fica salva em lugar nenhum)
         if: always()

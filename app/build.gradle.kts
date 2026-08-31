@@ -93,13 +93,8 @@ android {
     }
 }
 
-// Faz o Room salvar um .json do schema de cada versão do banco em app/schemas/.
-// É esse histórico que garante que uma futura Migration bata exatamente com o
-// schema real de cada versão, em vez de ser escrita "de memória" e arriscar
-// quebrar a validação do Room (ou pior, corromper dados) no aparelho do usuário.
-ksp {
-    arg("room.schemaLocation", "$projectDir/schemas")
-}
+// room.schemaLocation desligado por ora — ver comentário detalhado no AppDatabase.kt
+// (exportSchema = false) sobre o motivo.
 
 dependencies {
     // Core / Compose

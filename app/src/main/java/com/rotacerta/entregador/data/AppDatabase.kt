@@ -22,7 +22,16 @@ class Converters {
     fun toStatus(value: String): DeliveryStatus = DeliveryStatus.valueOf(value)
 }
 
-@Database(entities = [Delivery::class, HistoryEntry::class], version = 3, exportSchema = true)
+// exportSchema = false por enquanto: ainda não existe nenhuma Migration escrita que
+// dependa do histórico de schema (a lista MIGRATIONS abaixo está vazia), e a exportação
+// causou um problema real — uma corrida entre as variantes de build gravando o mesmo
+// arquivo ao mesmo tempo gerou um .json vazio que ficou commitado no repositório,
+// quebrando TODOS os builds seguintes (mesmo em runners 100% limpos), porque o Room
+// tentava ler aquele arquivo quebrado de novo a cada vez. A proteção contra perda de
+// dados (sem fallbackToDestructiveMigration) continua valendo independente disso — é
+// coisa separada. Quando a primeira Migration de verdade for escrita, voltar isso pra
+// true (e apagar qualquer coisa velha que tenha sobrado em app/schemas/ antes).
+@Database(entities = [Delivery::class, HistoryEntry::class], version = 3, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun deliveryDao(): DeliveryDao
