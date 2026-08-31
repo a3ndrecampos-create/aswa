@@ -20,6 +20,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
+          cache-disabled: true
       # --max-workers=1 força as tarefas a rodarem uma de cada vez (não em paralelo).
       # Sem isso, as variantes "production" e "closedTesting" compilam ao mesmo tempo e
       # as duas tentam escrever o schema do Room na mesma pasta simultaneamente — uma
@@ -60,6 +61,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
+          cache-disabled: true
 
       - name: Decodificar keystore (secret em base64) para arquivo
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > keystore.jks
