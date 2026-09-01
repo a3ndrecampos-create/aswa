@@ -56,7 +56,18 @@ jobs:
           gradle-version: '8.13'
 
       - name: Decodificar keystore (secret em base64) para arquivo
-        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > keystore.jks
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | tr -d ' \n\r' | base64 -d > keystore.jks
+          # Confere se pelo menos o arquivo saiu com um tamanho razoável (uma keystore
+          # de verdade tem alguns KB; se o secret estiver vazio ou corrompido, o arquivo
+          # sai vazio ou minúsculo, e é melhor falhar aqui com uma mensagem clara do que
+          # deixar o erro cripticamente lá na frente, na hora de assinar.
+          size=$(stat -c%s keystore.jks 2>/dev/null || echo 0)
+          echo "Tamanho da keystore decodificada: $size bytes"
+          if [ "$size" -lt 500 ]; then
+            echo "::error::A keystore decodificada ficou pequena demais (provável secret ANDROID_KEYSTORE_BASE64 vazio, incompleto ou corrompido). Confira o valor do secret."
+            exit 1
+          fi
 
       - name: Build .aab assinado - produção
         env:
