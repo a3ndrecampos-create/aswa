@@ -17,34 +17,21 @@ import com.rotacerta.entregador.data.Delivery
 import com.rotacerta.entregador.domain.LatLng
 import com.rotacerta.entregador.ui.theme.Muted
 import org.osmdroid.config.Configuration
-import org.osmdroid.tileprovider.tilesource.ITileSource
-import org.osmdroid.tileprovider.tilesource.OnlineTileSourceBase
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
-import org.osmdroid.util.MapTileIndex
 import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
 import java.io.File
 
-/**
- * Estilo de mapa mais clean/moderno que o visual clássico do OpenStreetMap (o mesmo
- * "Voyager" da CartoDB que já era usado na versão web antiga do mapa) — continua sendo
- * tiles públicos e gratuitos, só que com um visual mais minimalista.
- */
-private val VoyagerTileSource: ITileSource = object : OnlineTileSourceBase(
-    "CartoVoyager", 0, 20, 256, ".png",
-    arrayOf(
-        "https://a.basemaps.cartocdn.com/rastertiles/voyager/",
-        "https://b.basemaps.cartocdn.com/rastertiles/voyager/",
-        "https://c.basemaps.cartocdn.com/rastertiles/voyager/",
-        "https://d.basemaps.cartocdn.com/rastertiles/voyager/"
-    )
-) {
-    override fun getTileURLString(pMapTileIndex: Long): String =
-        getBaseUrl() + MapTileIndex.getZoom(pMapTileIndex) + "/" + MapTileIndex.getX(pMapTileIndex) + "/" + MapTileIndex.getY(pMapTileIndex) + mImageFilenameEnding
-}
+// O estilo "Voyager" da CartoDB (usado antes aqui) passou a exigir uma API key deles —
+// sem ela, os tiles vêm com uma marca d'água "API KEY REQUIRED" por cima do mapa inteiro.
+// Isso mudou do lado da CartoDB, não é algo que dava pra prever. Trocado pelo Mapnik, o
+// estilo padrão do próprio OpenStreetMap: menos "moderno" visualmente, mas garantidamente
+// gratuito pra sempre — não depende de nenhuma empresa terceira que possa mudar de
+// política do dia pra noite.
 
 
 /**
@@ -91,7 +78,7 @@ fun RouteMap(
             Configuration.getInstance().osmdroidTileCache = File(ctx.cacheDir, "osmdroid")
 
             MapView(ctx).apply {
-                setTileSource(VoyagerTileSource)
+                setTileSource(TileSourceFactory.MAPNIK)
                 setMultiTouchControls(true)
                 // Os botões +/- nativos do osmdroid aparecem como um popup flutuante por
                 // cima de TODA a tela (não ficam presos dentro da área do mapa) — foi isso
