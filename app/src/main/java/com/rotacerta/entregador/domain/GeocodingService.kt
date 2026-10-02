@@ -25,23 +25,37 @@ object GeocodingService {
     }
 
     suspend fun geocode(address: String, cepData: CepResponse? = null, numero: String = ""): GeoResult {
+        // O Nominatim pede no máximo ~1 req/segundo. Isso já era respeitado *entre*
+        // endereços (via politeDelay() no import em lote), mas não *dentro* da
+        // resolução de um único endereço problemático: as camadas 1-5 abaixo podiam
+        // disparar várias chamadas em sequência sem pausa, arriscando bloqueio
+        // temporário em lotes com muitos endereços malformatados. `nominatimCall`
+        // aplica o intervalo mínimo antes de toda chamada, exceto a primeira.
+        var madeFirstCall = false
+        suspend fun <T> nominatimCall(block: suspend () -> T): T {
+            if (madeFirstCall) delay(1000) else madeFirstCall = true
+            return block()
+        }
+
         // 1) estruturado via CEP
         if (cepData != null) {
             runCatching {
                 val street = cepData.logradouro?.let { if (numero.isNotBlank()) "$it, $numero" else it }
-                val res = NetworkModule.nominatim.searchStructured(
-                    street = street,
-                    city = cepData.localidade,
-                    state = cepData.uf,
-                    postalCode = cepData.cep?.filter { it.isDigit() }
-                )
+                val res = nominatimCall {
+                    NetworkModule.nominatim.searchStructured(
+                        street = street,
+                        city = cepData.localidade,
+                        state = cepData.uf,
+                        postalCode = cepData.cep?.filter { it.isDigit() }
+                    )
+                }
                 if (res.isNotEmpty()) return GeoResult(res[0].lat.toDouble(), res[0].lon.toDouble())
             }
         }
 
         // 2) texto completo
         runCatching {
-            val res = NetworkModule.nominatim.search("$address, Brasil")
+            val res = nominatimCall { NetworkModule.nominatim.search("$address, Brasil") }
             if (res.isNotEmpty()) return GeoResult(res[0].lat.toDouble(), res[0].lon.toDouble())
         }
 
@@ -50,7 +64,7 @@ object GeocodingService {
             runCatching {
                 val q = listOfNotNull(cepData.logradouro, cepData.localidade?.let { "$it - ${cepData.uf}" }, "Brasil")
                     .joinToString(", ")
-                val res = NetworkModule.nominatim.search(q)
+                val res = nominatimCall { NetworkModule.nominatim.search(q) }
                 if (res.isNotEmpty()) return GeoResult(res[0].lat.toDouble(), res[0].lon.toDouble())
             }
         }
@@ -64,7 +78,7 @@ object GeocodingService {
                     streetPart += ", ${parts[1]}"
                 }
                 val cityState = normalizeCityState(parts.last())
-                val res = NetworkModule.nominatim.search("$streetPart, $cityState, Brasil")
+                val res = nominatimCall { NetworkModule.nominatim.search("$streetPart, $cityState, Brasil") }
                 if (res.isNotEmpty()) return GeoResult(res[0].lat.toDouble(), res[0].lon.toDouble())
             }
         }
@@ -74,7 +88,7 @@ object GeocodingService {
             ?: parts.lastOrNull()?.let { normalizeCityState(it) }
         if (cityState != null) {
             runCatching {
-                val res = NetworkModule.nominatim.search("$cityState, Brasil")
+                val res = nominatimCall { NetworkModule.nominatim.search("$cityState, Brasil") }
                 if (res.isNotEmpty()) return GeoResult(res[0].lat.toDouble(), res[0].lon.toDouble(), approx = true)
             }
         }

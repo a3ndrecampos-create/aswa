@@ -1,7 +1,12 @@
 package com.rotacerta.entregador.ui.screens
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,6 +18,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Celebration
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Navigation
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SearchOff
@@ -22,12 +28,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.rotacerta.entregador.data.DeliveryStatus
 import com.rotacerta.entregador.domain.RouteOptimizer
 import com.rotacerta.entregador.ui.components.DeliveryCard
@@ -50,11 +59,40 @@ fun RotaScreen(viewModel: RotaViewModel, onAddClick: () -> Unit) {
     // Liga o serviço de monitoramento em segundo plano (fica de olho no GPS mesmo
     // com o app minimizado/em outro app tipo Waze, e mostra o popup "Você chegou"
     // por cima de tudo). Só liga se já tiver permissão de localização.
-    LaunchedEffect(Unit) {
-        val hasPermission = ContextCompat.checkSelfPermission(
-            context, Manifest.permission.ACCESS_FINE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
-        if (hasPermission) {
+    //
+    // Antes, essas permissões só eram checadas/pedidas na aba Config — quem nunca
+    // visitasse aquela aba tinha o aviso de chegada desativado sem nenhum indício
+    // disso na tela principal. Agora o estado é observado aqui também, com um
+    // banner (abaixo) oferecendo ativar direto da aba Rota.
+    fun checkLocationPermission() = ContextCompat.checkSelfPermission(
+        context, Manifest.permission.ACCESS_FINE_LOCATION
+    ) == PackageManager.PERMISSION_GRANTED
+
+    var hasLocationPermission by remember { mutableStateOf(checkLocationPermission()) }
+    var hasOverlayPermission by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
+
+    // O usuário concede essas permissões nas Configurações do Android (fora do app),
+    // então não existe callback direto — reavalia sempre que a tela volta a ficar em
+    // primeiro plano (ON_RESUME), o que cobre tanto o retorno do diálogo de permissão
+    // quanto o retorno da tela de Ajustes do Android (permissão de sobreposição).
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                hasLocationPermission = checkLocationPermission()
+                hasOverlayPermission = Settings.canDrawOverlays(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> hasLocationPermission = granted }
+
+    LaunchedEffect(hasLocationPermission) {
+        if (hasLocationPermission) {
             val intent = android.content.Intent(context, com.rotacerta.entregador.service.ArrivalMonitorService::class.java)
             androidx.core.content.ContextCompat.startForegroundService(context, intent)
         }
@@ -114,6 +152,20 @@ fun RotaScreen(viewModel: RotaViewModel, onAddClick: () -> Unit) {
     val stats = viewModel.routeStats()
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
+        if (pending.isNotEmpty() && (!hasLocationPermission || !hasOverlayPermission)) {
+            ArrivalAlertBanner(
+                missingLocation = !hasLocationPermission,
+                missingOverlay = !hasOverlayPermission,
+                onFixLocation = { locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION) },
+                onFixOverlay = {
+                    context.startActivity(
+                        Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
+                    )
+                }
+            )
+            Spacer(Modifier.height(12.dp))
+        }
+
         StatsStrip(stats.pendingCount, stats.distanceKm, stats.etaMillis)
 
         Row(
@@ -189,6 +241,51 @@ fun RotaScreen(viewModel: RotaViewModel, onAddClick: () -> Unit) {
                     }
                 }
                 item { Spacer(Modifier.height(80.dp)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ArrivalAlertBanner(
+    missingLocation: Boolean,
+    missingOverlay: Boolean,
+    onFixLocation: () -> Unit,
+    onFixOverlay: () -> Unit
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Accent.copy(alpha = 0.14f))
+            .padding(14.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.NotificationsActive, contentDescription = null, tint = Accent, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "Aviso de chegada desativado",
+                color = Accent,
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+        Text(
+            "Falta autorizar uma permissão pro app avisar \"Você chegou\" em cada parada.",
+            style = MaterialTheme.typography.bodySmall,
+            color = com.rotacerta.entregador.ui.theme.Muted,
+            modifier = Modifier.padding(top = 4.dp, bottom = 10.dp)
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (missingLocation) {
+                OutlinedButton(onClick = onFixLocation, modifier = Modifier.weight(1f)) {
+                    Text("Ativar GPS", style = MaterialTheme.typography.labelMedium)
+                }
+            }
+            if (missingOverlay) {
+                OutlinedButton(onClick = onFixOverlay, modifier = Modifier.weight(1f)) {
+                    Text("Ativar sobreposição", style = MaterialTheme.typography.labelMedium)
+                }
             }
         }
     }

@@ -24,9 +24,37 @@ object OcrHelper {
             .addOnFailureListener { e -> cont.resumeWithException(e) }
     }
 
+    private val CEP_KEYWORD_REGEX = Regex("""(?i)cep[:\s.-]{0,4}(\d{5}-?\d{3})""")
+    private val CEP_NEAR_KEYWORD_LINE_REGEX = Regex("""(?i)\bcep\b""")
     private val CEP_REGEX = Regex("""\d{5}-?\d{3}""")
 
+    /**
+     * Antes, pegava o PRIMEIRO número de 8 dígitos formatado como CEP em qualquer lugar
+     * do texto — o que dava errado quando a etiqueta também tinha telefone, código de
+     * rastreio ou outro número de 8 dígitos por perto. Agora prioriza achar a palavra
+     * "CEP" primeiro e pegar o número logo depois dela, que é bem mais confiável.
+     */
     fun extractCep(text: String): String? {
+        // 1) "CEP: 01310-100" ou "CEP 01310100" — número colado na própria palavra.
+        CEP_KEYWORD_REGEX.find(text)?.let { match ->
+            val digits = match.groupValues[1].filter { it.isDigit() }
+            if (digits.length == 8) return "${digits.substring(0, 5)}-${digits.substring(5)}"
+        }
+
+        // 2) A palavra "CEP" está numa linha e o número ficou na linha seguinte (comum
+        // quando o OCR quebra a etiqueta em linhas diferentes do que o layout original).
+        val lines = text.lines()
+        val cepLineIndex = lines.indexOfFirst { CEP_NEAR_KEYWORD_LINE_REGEX.containsMatchIn(it) }
+        if (cepLineIndex != -1) {
+            val nearby = lines.drop(cepLineIndex).take(3).joinToString(" ")
+            CEP_REGEX.find(nearby)?.let { match ->
+                val digits = match.value.filter { it.isDigit() }
+                if (digits.length == 8) return "${digits.substring(0, 5)}-${digits.substring(5)}"
+            }
+        }
+
+        // 3) Último recurso (comportamento antigo): primeiro número de 8 dígitos no
+        // formato de CEP em qualquer lugar do texto, mesmo sem a palavra "CEP" por perto.
         val match = CEP_REGEX.find(text) ?: return null
         val digits = match.value.filter { it.isDigit() }
         return if (digits.length == 8) "${digits.substring(0, 5)}-${digits.substring(5)}" else null

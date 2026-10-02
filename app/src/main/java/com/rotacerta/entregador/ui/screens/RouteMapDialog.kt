@@ -1,8 +1,5 @@
 package com.rotacerta.entregador.ui.screens
 
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,21 +16,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.rotacerta.entregador.data.Delivery
 import com.rotacerta.entregador.domain.LatLng
+import com.rotacerta.entregador.ui.components.RouteMap
 
 /**
- * Mostra a rota inteira num mapa (WebView + Leaflet/OpenStreetMap — gratuito,
- * sem precisar de chave de API nem biblioteca pesada de mapa).
- * Marca a origem (🏁), cada parada numerada, e o destino final quando "ida e volta"
- * estiver ativado.
- *
- * A própria página HTML mostra "Carregando mapa..." e, se depois de alguns
- * segundos nada aparecer (sem internet, CDN bloqueado, etc.), troca pra uma
- * mensagem de erro explicando o motivo — em vez de ficar uma tela branca muda.
+ * Mostra a rota inteira num mapa nativo (OpenStreetMap via osmdroid). Marca a origem
+ * (🏁), cada parada numerada, e o destino final quando "ida e volta" estiver ativado.
  */
 @Composable
 fun RouteMapDialog(
@@ -45,29 +36,12 @@ fun RouteMapDialog(
 ) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(Modifier.fillMaxSize()) {
-            AndroidView(
-                modifier = Modifier.fillMaxSize(),
-                factory = { ctx ->
-                    WebView(ctx).apply {
-                        settings.javaScriptEnabled = true
-                        settings.domStorageEnabled = true
-                        settings.loadWithOverviewMode = true
-                        settings.useWideViewPort = true
-                        settings.cacheMode = WebSettings.LOAD_DEFAULT
-                        settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                        // Alguns provedores de mapa recusam ou tratam diferente o user-agent
-                        // padrão da WebView — usar um user-agent comum de navegador evita isso.
-                        settings.userAgentString =
-                            "Mozilla/5.0 (Linux; Android 12; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) " +
-                                "Chrome/120.0.0.0 Mobile Safari/537.36"
-                        webViewClient = WebViewClient()
-                        loadDataWithBaseURL(
-                            "https://rotacerta.app/",
-                            buildMapHtml(deliveries, origin, returnPoint, roundTrip),
-                            "text/html", "UTF-8", null
-                        )
-                    }
-                }
+            RouteMap(
+                deliveries = deliveries,
+                origin = origin,
+                returnPoint = returnPoint,
+                roundTrip = roundTrip,
+                modifier = Modifier.fillMaxSize()
             )
             IconButton(
                 onClick = onDismiss,
@@ -82,95 +56,4 @@ fun RouteMapDialog(
             }
         }
     }
-}
-
-private fun buildMapHtml(deliveries: List<Delivery>, origin: LatLng?, returnPoint: LatLng?, roundTrip: Boolean): String {
-    data class Point(val lat: Double, val lng: Double, val label: String, val color: String)
-
-    val points = mutableListOf<Point>()
-    origin?.let { points.add(Point(it.lat, it.lng, "🏁", "#2FA86A")) }
-    deliveries.sortedBy { it.order }.distinctBy { it.order }.forEach {
-        points.add(Point(it.lat, it.lng, it.order.toString(), "#8B5CF6"))
-    }
-    if (roundTrip) {
-        val ret = returnPoint ?: origin
-        ret?.let { points.add(Point(it.lat, it.lng, "🏠", "#2FA86A")) }
-    }
-
-    if (points.isEmpty()) {
-        return "<html><body style='font-family:sans-serif;text-align:center;padding-top:40%;color:#888'>Sem paradas pra mostrar no mapa. Importe ou adicione entregas primeiro.</body></html>"
-    }
-
-    val latlngs = points.joinToString(",") { "[${it.lat},${it.lng}]" }
-    val markersJs = points.joinToString("\n") { p ->
-        """
-        L.marker([${p.lat}, ${p.lng}], {icon: L.divIcon({
-            html: '<div style="background:${p.color};color:#fff;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:13px;border:2px solid white;box-shadow:0 1px 5px rgba(0,0,0,.45);">${p.label}</div>',
-            iconSize: [30,30], className: ''
-        })}).addTo(map);
-        """.trimIndent()
-    }
-
-    return """
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-          <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-          <style>
-            html,body,#map{height:100%;margin:0;padding:0;background:#eee;}
-            #status{
-              position:fixed; top:0; left:0; right:0; bottom:0; z-index:9999;
-              display:flex; align-items:center; justify-content:center; text-align:center;
-              font-family:sans-serif; color:#555; background:#f2f2f2; padding:24px; box-sizing:border-box;
-            }
-          </style>
-        </head>
-        <body>
-          <div id="status">Carregando mapa...</div>
-          <div id="map"></div>
-          <script>
-            // Se der qualquer erro de JavaScript (biblioteca não carregou, etc.),
-            // mostra na tela em vez de ficar tudo branco sem explicação.
-            window.onerror = function(msg) {
-              document.getElementById('status').style.display = 'flex';
-              document.getElementById('status').innerHTML =
-                '⚠️ Não consegui carregar o mapa.<br><br><small>' + msg + '</small><br><br>Verifique sua conexão com a internet.';
-              return true;
-            };
-          </script>
-          <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-          <script>
-            var map = L.map('map');
-            var tiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-              maxZoom: 19,
-              subdomains: 'abcd',
-              attribution: '&copy; OpenStreetMap &copy; CARTO'
-            }).addTo(map);
-
-            var pts = [$latlngs];
-            var poly = L.polyline(pts, {color: '#8B5CF6', weight: 4, opacity: 0.8}).addTo(map);
-            map.fitBounds(poly.getBounds(), {padding: [40,40]});
-            $markersJs
-
-            var tilesLoaded = false;
-            tiles.on('load', function() {
-              tilesLoaded = true;
-              document.getElementById('status').style.display = 'none';
-            });
-            tiles.on('tileerror', function() {
-              document.getElementById('status').innerHTML =
-                '⚠️ Não consegui carregar as imagens do mapa.<br><br>Verifique sua conexão com a internet e tente de novo.';
-            });
-            // Se depois de 8s nada carregou (nem sucesso nem erro explícito), avisa mesmo assim.
-            setTimeout(function() {
-              if (!tilesLoaded) {
-                document.getElementById('status').innerHTML =
-                  '⚠️ O mapa está demorando pra carregar.<br><br>Verifique sua conexão com a internet.';
-              }
-            }, 8000);
-          </script>
-        </body>
-        </html>
-    """.trimIndent()
 }

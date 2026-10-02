@@ -1,49 +1,111 @@
-# RotaCerta — App Android nativo (Kotlin)
+# Flex Otimizador de Rota — App Android nativo (Kotlin)
 
-App nativo de painel do entregador, reescrito em Kotlin/Jetpack Compose a partir do PWA original (`app-entregador.html`).
+App nativo de painel do entregador, reescrito em Kotlin/Jetpack Compose. Nome no Google
+Play: **Flex Otimizador de Rota**. Pacote (`applicationId`): `com.flexotimizador.entregador`.
 
 ## O que já está implementado
 - Lista de entregas com prioridade, prazo, valor, status (pendente/entregue)
-- Otimização de rota (algoritmo do vizinho mais próximo, igual ao app original)
-- Mapa com OpenStreetMap (osmdroid — não precisa de chave de API do Google)
+- Otimização de rota (vizinho mais próximo + refinamento 2-opt)
+- Mapa nativo com OpenStreetMap (osmdroid — não precisa de chave de API do Google), com
+  edição de sequência por arrastar ou por toque (selecionar + mover), inclusive tocando
+  direto no número da parada no mapa
 - Busca de endereço por CEP (ViaCEP) e geocodificação em camadas (Nominatim/OSM)
-- Leitura de endereço por foto (OCR on-device via ML Kit)
-- Importação de planilha `.xlsx` (detecta colunas de endereço, CEP, prioridade, valor, lat/lng, sequência)
-- Histórico de entregas com ganhos do dia/semana/mês
-- Configurações: ponto de partida, veículo, app de navegação (Google Maps/Waze), valor padrão
-- Navegação via Google Maps / Waze (intents)
+- Leitura de CEP por foto (OCR on-device via ML Kit, priorizando a palavra "CEP" pra
+  reduzir erro) e leitura de código de rastreio (QR/barras) via ZXing
+- Importação de planilha `.xlsx`
+- Histórico de entregas com ganhos do dia/semana/mês + relatório com gráfico
+- Backup/restauração dos dados em `.xml`
 - Persistência local com Room (entregas/histórico) e DataStore (configurações)
+- Splash screen nativa, funciona offline (exceto mapa/geocodificação de endereço novo)
 
-## Como gerar o APK (sem instalar Android Studio)
+## Modelo de acesso: teste grátis + assinatura
+`billing/TrialManager.kt` libera **10 dias grátis** a partir da primeira abertura do app
+naquele aparelho (guardado localmente, sem precisar de conta/login). Depois disso, o app
+exige a assinatura mensal **Flex Pro** pra continuar sendo usado — a tela de paywall
+(`ui/screens/PaywallScreen.kt`) bloqueia o app inteiro nesse caso.
 
-### Opção 1 — GitHub Actions (recomendado)
-1. Crie um repositório novo no [GitHub](https://github.com/new) (pode ser privado).
-2. Suba todos os arquivos deste projeto para o repositório (pela interface web do GitHub: "Add file" → "Upload files", ou via `git push`).
-3. O workflow em `.github/workflows/build.yml` já está configurado. Assim que você subir os arquivos na branch `main`, ele roda automaticamente.
-4. Vá na aba **Actions** do repositório → clique na execução mais recente → em **Artifacts**, baixe `RotaCerta-debug-apk`. Dentro está o `app-debug.apk`, pronto para instalar no celular.
+**Antes de publicar**, crie o produto de assinatura no Play Console (Monetização >
+Produtos de assinatura) com o ID exato `flex_otimizador_pro_mensal` (ou troque a
+constante `PRO_MONTHLY_PRODUCT_ID` em `billing/BillingManager.kt` pelo ID que você usar).
+Produtos de assinatura só ficam disponíveis pra teste depois do primeiro upload do app
+(mesmo em teste interno).
 
-Esse APK de debug já instala e funciona normalmente no Android. Para publicar na Play Store futuramente, é preciso gerar uma versão *release* assinada — isso também dá para automatizar no mesmo workflow quando chegar a hora.
+Onde cada regra fica implementada, se precisar mexer:
+- `billing/TrialManager.kt` — conta os 10 dias (guardado localmente no aparelho)
+- `billing/PremiumAccessManager.kt` — combina teste fechado + trial + assinatura numa
+  única resposta (`hasAccess`) que o resto do app usa
+- `billing/BillingManager.kt` — só cuida da assinatura real (Google Play Billing), não
+  sabe nada sobre trial ou teste fechado
 
-### Opção 2 — Android Studio (local)
-1. Baixe o [Android Studio](https://developer.android.com/studio) (gratuito).
-2. Abra este projeto (`File → Open`).
-3. Deixe o Android Studio baixar o SDK/dependências na primeira vez.
-4. `Build → Build Bundle(s) / APK(s) → Build APK(s)`.
+## Teste fechado x Produção (variantes de build)
+O app tem duas variantes ("product flavors"), escolhidas na hora de compilar:
+
+- **`production`**: regra comercial real (10 dias grátis, depois exige assinatura). É o
+  que vai pra faixa de **Produção** do Play Console.
+- **`closedTesting`**: acesso sempre liberado, sem trial, sem paywall — pra quem está
+  testando o app na faixa de **Teste fechado** do Play Console conseguir ver 100% das
+  telas sem precisar assinar. **Nunca envie esta variante pra Produção.**
+
+Cada variante gera um `.aab` com nome diferente (`app-production-release.aab` e
+`app-closedTesting-release.aab`). Localmente: `./gradlew bundleProductionRelease` ou
+`./gradlew bundleClosedTestingRelease` (o Android Studio também deixa escolher a "Build
+Variant" numa aba própria).
+
+## Assinatura de release (obrigatória pra publicar)
+O Gradle assina o release automaticamente **se** as variáveis de ambiente da keystore
+existirem (`ANDROID_KEYSTORE_PATH`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`,
+`ANDROID_KEY_PASSWORD`) — pensado pra rodar em CI (GitHub Actions, configurando essas
+variáveis como *secrets* do repositório). Sem elas, o build de release sai sem assinatura
+— nesse caso, gere localmente pelo assistente **Build → Generate Signed Bundle/APK** do
+Android Studio (que assina por fora do Gradle e cria a keystore no processo, se você
+ainda não tiver uma).
+
+**Guarde a keystore e as senhas em lugar seguro fora do repositório** — se perder, não
+tem como atualizar o app publicado depois, só publicar um app novo do zero.
+
+## Requisitos atuais do Google Play
+- `compileSdk`/`targetSdk` **36** — exigência do Play a partir de **31/08/2026**.
+- **Leitor de código de rastreio via ZXing** (`utils/ZxingDecoder.kt`), não ML Kit: a
+  biblioteca nativa do ML Kit Barcode Scanning (`libbarhopper_v3.so`) é incompatível com
+  a exigência de paginação de memória de 16KB do Google Play, sem correção publicada até
+  agora. ZXing é 100% Java/Kotlin, sem biblioteca nativa — não tem esse problema. (O OCR
+  de CEP continua com ML Kit Text Recognition, que não teve esse problema relatado.)
+- `androidx.camera:*` atualizado pra `1.5.1` (corrige o alinhamento de 16KB de outra
+  biblioteca nativa da câmera, `libimage_processing_util_jni.so`).
+- `isMinifyEnabled = true` no release, com regras de ProGuard (`proguard-rules.pro`)
+  cobrindo Room, Retrofit/Gson, ML Kit, ZXing, osmdroid e Billing.
+
+## Antes de publicar (checklist)
+- [ ] Criar a keystore de release e guardar em lugar seguro (ver seção acima)
+- [ ] Criar o produto de assinatura mensal no Play Console com o ID
+      `flex_otimizador_pro_mensal` (ou ajustar a constante correspondente)
+- [ ] Preencher a Política de Privacidade (obrigatória — o app usa câmera, localização e
+      notificações) e o Formulário de conteúdo do app na Play Console
+- [ ] Gerar e testar a variante `closedTesting` primeiro, subir pra faixa de Teste
+      Fechado, confirmar que a assinatura/trial funcionam antes de ir pra Produção
+- [ ] Ícone adaptativo definitivo (hoje é um ícone simples, funcional, mas vale revisar)
+- [ ] Screenshots e textos da loja (descrição curta/longa, categoria)
 
 ## Estrutura do projeto
 ```
 app/src/main/java/com/rotacerta/entregador/
+  billing/      Trial de 10 dias, assinatura (Google Play Billing), gate de acesso
   data/         Entidades Room, DAOs, banco de dados, configuração (DataStore)
   network/      Retrofit: ViaCEP e Nominatim
-  domain/       Otimização de rota, geocodificação em camadas, importador de xlsx
+  domain/       Otimização de rota, geocodificação em camadas, importador de xlsx, backup
   ocr/          Leitura de texto por câmera (ML Kit)
+  utils/        Leitor de código de barras/QR (ZXing)
   viewmodel/    RotaViewModel — estado central do app
-  ui/screens/   Telas: Rota, Mapa, Histórico, Config, diálogo de nova entrega
-  ui/components/ Componentes reutilizáveis (card de entrega, tira de estatísticas)
-  ui/theme/     Cores e tema (mesma paleta do app original)
+  ui/screens/   Telas: Rota, Mapa, Histórico, Config, Paywall, diálogos e scanners
+  ui/components/ Componentes reutilizáveis (card de entrega, mapa, lista reordenável)
+  ui/theme/     Cores e tema
 ```
 
 ## Observações importantes
-- O app precisa de internet para geocodificação, CEP e mapa (como o original).
-- Nominatim (geocodificação gratuita) tem limite de uso — o app já respeita um intervalo entre requisições ao importar planilhas grandes.
-- Este projeto não foi compilado neste ambiente (sem acesso ao Android SDK aqui). Pequenos ajustes podem ser necessários na primeira compilação — é normal em qualquer handoff de projeto Android novo. Se aparecer algum erro de build, cole a mensagem de erro que te ajudo a resolver.
+- O app precisa de internet para geocodificação, CEP e mapa. O resto (ver/organizar
+  entregas, marcar entregue, histórico, relatório) funciona 100% offline.
+- Nominatim (geocodificação gratuita) tem limite de uso — o app já respeita um intervalo
+  mínimo entre requisições.
+- Este projeto não é compilado no ambiente onde é editado (sem acesso ao Android SDK).
+  Sempre teste com `gradlew assembleDebug` (ou equivalente) antes de considerar uma
+  mudança pronta.

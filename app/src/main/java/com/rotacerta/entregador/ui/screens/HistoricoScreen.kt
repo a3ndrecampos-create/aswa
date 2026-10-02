@@ -1,5 +1,7 @@
 package com.rotacerta.entregador.ui.screens
 
+import android.content.Context
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -15,18 +17,24 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import com.rotacerta.entregador.data.HistoryEntry
+import com.rotacerta.entregador.domain.BackupManager
 import com.rotacerta.entregador.ui.theme.*
 import com.rotacerta.entregador.viewmodel.RotaViewModel
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
 @Composable
 fun HistoricoScreen(viewModel: RotaViewModel) {
     val history by viewModel.history.collectAsState()
+    val context = LocalContext.current
+    var showReport by remember { mutableStateOf(false) }
 
     val now = Calendar.getInstance()
     val startDay = (now.clone() as Calendar).apply { set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0) }
@@ -47,7 +55,16 @@ fun HistoricoScreen(viewModel: RotaViewModel) {
     }
 
     Column(Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Ganhos", style = MaterialTheme.typography.labelLarge, color = Muted)
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Ganhos", style = MaterialTheme.typography.labelLarge, color = Muted)
+            if (history.isNotEmpty()) {
+                TextButton(onClick = { showReport = true }) { Text("Ver relatório completo") }
+            }
+        }
         Spacer(Modifier.height(8.dp))
 
         HighlightEarnCard(day, dayCount)
@@ -79,6 +96,30 @@ fun HistoricoScreen(viewModel: RotaViewModel) {
             }
         }
     }
+
+    if (showReport) {
+        ReportDialog(
+            history = history,
+            onDismiss = { showReport = false },
+            onExport = { shareHistoryCsv(context, history) }
+        )
+    }
+}
+
+/** Gera um CSV do histórico num arquivo temporário e abre o seletor "Compartilhar" do Android. */
+private fun shareHistoryCsv(context: Context, history: List<HistoryEntry>) {
+    val csv = BackupManager.historyToCsv(history)
+    val dir = File(context.cacheDir, "exports").apply { mkdirs() }
+    val fmt = SimpleDateFormat("yyyy-MM-dd_HHmm", Locale("pt", "BR"))
+    val file = File(dir, "ganhos-rotacerta-${fmt.format(Date())}.csv")
+    file.writeText(csv, Charsets.UTF_8)
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/csv"
+        putExtra(Intent.EXTRA_STREAM, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(Intent.createChooser(intent, "Compartilhar extrato de ganhos"))
 }
 
 private fun dayLabel(millis: Long): String {
