@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color as AndroidColor
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.Point
 import android.graphics.drawable.BitmapDrawable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.Text
@@ -18,6 +19,9 @@ import com.rotacerta.entregador.data.Delivery
 import com.rotacerta.entregador.domain.LatLng
 import com.rotacerta.entregador.ui.theme.Muted
 import org.osmdroid.config.Configuration
+import org.osmdroid.events.MapListener
+import org.osmdroid.events.ScrollEvent
+import org.osmdroid.events.ZoomEvent
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
@@ -33,12 +37,28 @@ import java.io.File
 // gratuito pra sempre — não depende de nenhuma empresa terceira que possa mudar de
 // política do dia pra noite.
 
+/** Guarda os dados mais recentes pra reconstruir os marcadores a qualquer momento — tanto
+ *  quando os dados mudam (Compose) quanto quando só o zoom/posição do mapa muda (gesto
+ *  nativo, que o Compose nem fica sabendo que aconteceu). */
+private class MapRenderState {
+    var sortedDeliveries: List<Delivery> = emptyList()
+    var origin: LatLng? = null
+    var returnPoint: LatLng? = null
+    var roundTrip: Boolean = false
+    var highlightOrder: Int? = null
+    var onStopMarkerClick: ((Int) -> Unit)? = null
+}
 
 /**
  * Mapa da rota usando osmdroid (mapas do OpenStreetMap, renderização nativa — não é
  * WebView). Diferente do Google Maps, não precisa de nenhuma API key nem cadastro no
  * Google Cloud: os "tiles" (imagens do mapa) vêm direto dos servidores públicos do
  * OpenStreetMap, de graça.
+ *
+ * As paradas próximas na tela (não no mapa real — na TELA, que muda com o zoom) são
+ * agrupadas num "bolhão" com o número de paradas ali dentro, em vez de ficarem uma por
+ * cima da outra — mesmo comportamento do Uber/Google Maps. Dando zoom ou tocando no
+ * bolhão, ele se separa nos pins individuais.
  */
 @Composable
 fun RouteMap(
@@ -68,6 +88,14 @@ fun RouteMap(
         return
     }
 
+    val renderState = remember { MapRenderState() }
+    renderState.sortedDeliveries = sortedDeliveries
+    renderState.origin = origin
+    renderState.returnPoint = returnPoint
+    renderState.roundTrip = roundTrip
+    renderState.highlightOrder = highlightOrder
+    renderState.onStopMarkerClick = onStopMarkerClick
+
     AndroidView(
         modifier = modifier,
         factory = { ctx ->
@@ -92,32 +120,25 @@ fun RouteMap(
                     allPoints.map { it.longitude }.average()
                 )
                 controller.setCenter(center)
+
+                // Refaz os pins sempre que o usuário dá zoom ou arrasta o mapa — é só
+                // nesse momento que dá pra saber quais paradas ficaram perto na TELA (a
+                // mesma distância real em metros fica mais apertada ou mais espaçada na
+                // tela dependendo do zoom).
+                addMapListener(object : MapListener {
+                    override fun onScroll(event: ScrollEvent?): Boolean {
+                        rebuildMarkers(this@apply, renderState)
+                        return false
+                    }
+                    override fun onZoom(event: ZoomEvent?): Boolean {
+                        rebuildMarkers(this@apply, renderState)
+                        return false
+                    }
+                })
             }
         },
         update = { mapView ->
-            mapView.overlays.clear()
-
-            // Sem linha ligando os balões: era uma linha reta "como o pássaro voa", direto
-            // de ponto a ponto, sem seguir as ruas de verdade — cortava quarteirões e
-            // prédios no meio, ficava confuso. Melhor só os pins no mapa.
-            origin?.let {
-                mapView.overlays.add(pinMarker(mapView, GeoPoint(it.lat, it.lng), "🏁", "#2FA86A"))
-            }
-            sortedDeliveries.forEach { d ->
-                val marker = pinMarker(mapView, GeoPoint(d.lat, d.lng), d.order.toString(), "#8B5CF6", highlighted = d.order == highlightOrder)
-                if (onStopMarkerClick != null) {
-                    marker.setOnMarkerClickListener { _, _ ->
-                        onStopMarkerClick(d.order)
-                        true // não centraliza/abre balão padrão — só dispara nossa seleção
-                    }
-                }
-                mapView.overlays.add(marker)
-            }
-            if (roundTrip) {
-                (returnPoint ?: origin)?.let {
-                    mapView.overlays.add(pinMarker(mapView, GeoPoint(it.lat, it.lng), "🏠", "#2FA86A"))
-                }
-            }
+            rebuildMarkers(mapView, renderState)
 
             if (allPoints.size > 1) {
                 val bbox = BoundingBox.fromGeoPoints(allPoints)
@@ -125,9 +146,78 @@ fun RouteMap(
                     runCatching { mapView.zoomToBoundingBox(bbox, true, 100) }
                 }
             }
-            mapView.invalidate()
         }
     )
+}
+
+/** Raio em pixels de tela: paradas mais perto que isso uma da outra viram um bolhão único. */
+private const val CLUSTER_RADIUS_PX = 70.0
+
+private fun rebuildMarkers(mapView: MapView, state: MapRenderState) {
+    mapView.overlays.clear()
+
+    state.origin?.let {
+        mapView.overlays.add(pinMarker(mapView, GeoPoint(it.lat, it.lng), "🏁", "#2FA86A"))
+    }
+
+    // Agrupamento simples: projeta cada parada pra posição em pixels na tela atual, e junta
+    // (algoritmo guloso) quem está a menos de CLUSTER_RADIUS_PX de distância uma da outra.
+    val projection = mapView.projection
+    data class Entry(val delivery: Delivery, val screenX: Int, val screenY: Int)
+    val entries = state.sortedDeliveries.map { d ->
+        val pt = Point()
+        projection.toPixels(GeoPoint(d.lat, d.lng), pt)
+        Entry(d, pt.x, pt.y)
+    }
+
+    val used = BooleanArray(entries.size)
+    for (i in entries.indices) {
+        if (used[i]) continue
+        val group = mutableListOf(entries[i])
+        used[i] = true
+        for (j in i + 1 until entries.size) {
+            if (used[j]) continue
+            val dx = (entries[i].screenX - entries[j].screenX).toDouble()
+            val dy = (entries[i].screenY - entries[j].screenY).toDouble()
+            if (dx * dx + dy * dy < CLUSTER_RADIUS_PX * CLUSTER_RADIUS_PX) {
+                group.add(entries[j])
+                used[j] = true
+            }
+        }
+
+        if (group.size == 1) {
+            val d = group[0].delivery
+            val marker = pinMarker(
+                mapView, GeoPoint(d.lat, d.lng), d.order.toString(), "#8B5CF6",
+                highlighted = d.order == state.highlightOrder
+            )
+            state.onStopMarkerClick?.let { onClick ->
+                marker.setOnMarkerClickListener { _, _ -> onClick(d.order); true }
+            }
+            mapView.overlays.add(marker)
+        } else {
+            val avgLat = group.map { it.delivery.lat }.average()
+            val avgLng = group.map { it.delivery.lng }.average()
+            val clusterMarker = pinMarker(
+                mapView, GeoPoint(avgLat, avgLng), group.size.toString(), "#6D28D9", highlighted = false
+            )
+            // Tocar no bolhão aproxima o mapa ali, separando as paradas de dentro dele.
+            clusterMarker.setOnMarkerClickListener { _, mv ->
+                mv.controller.animateTo(GeoPoint(avgLat, avgLng))
+                mv.controller.zoomTo((mv.zoomLevelDouble + 2.5).coerceAtMost(20.0))
+                true
+            }
+            mapView.overlays.add(clusterMarker)
+        }
+    }
+
+    if (state.roundTrip) {
+        (state.returnPoint ?: state.origin)?.let {
+            mapView.overlays.add(pinMarker(mapView, GeoPoint(it.lat, it.lng), "🏠", "#2FA86A"))
+        }
+    }
+
+    mapView.invalidate()
 }
 
 /**
