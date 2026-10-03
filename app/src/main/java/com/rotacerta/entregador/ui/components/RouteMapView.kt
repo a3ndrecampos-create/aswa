@@ -151,7 +151,7 @@ fun RouteMap(
 }
 
 /** Raio em pixels de tela: paradas mais perto que isso uma da outra viram um bolhão único. */
-private const val CLUSTER_RADIUS_PX = 70.0
+private const val CLUSTER_RADIUS_PX = 55.0
 
 private fun rebuildMarkers(mapView: MapView, state: MapRenderState) {
     mapView.overlays.clear()
@@ -198,9 +198,11 @@ private fun rebuildMarkers(mapView: MapView, state: MapRenderState) {
         } else {
             val avgLat = group.map { it.delivery.lat }.average()
             val avgLng = group.map { it.delivery.lng }.average()
-            val clusterMarker = pinMarker(
-                mapView, GeoPoint(avgLat, avgLng), group.size.toString(), "#6D28D9", highlighted = false
-            )
+            // Visual BEM diferente do pin de parada (círculo cheio, sem pontinha, com "+"
+            // na frente do número) — com o mesmo formato de pin, "2" ou "3" aqui parecia a
+            // ORDEM da parada repetida, dando a impressão de rota errada quando na
+            // verdade é só "tem 2/3 paradas perto daqui".
+            val clusterMarker = clusterMarker(mapView, GeoPoint(avgLat, avgLng), group.size)
             // Tocar no bolhão aproxima o mapa ali, separando as paradas de dentro dele.
             clusterMarker.setOnMarkerClickListener { _, mv ->
                 mv.controller.animateTo(GeoPoint(avgLat, avgLng))
@@ -234,6 +236,66 @@ private fun pinMarker(mapView: MapView, point: GeoPoint, label: String, hexColor
         icon = BitmapDrawable(mapView.context.resources, pinBitmap(label, hexColor, highlighted))
         setInfoWindow(null)
     }
+}
+
+/**
+ * Bolhão de agrupamento: círculo CHEIO, sem pontinha embaixo (porque não representa um
+ * local exato, representa uma área com várias paradas dentro) — visual propositalmente
+ * diferente do pin de parada, pra nunca ser confundido com o número de ordem da rota.
+ */
+private fun clusterMarker(mapView: MapView, point: GeoPoint, count: Int): Marker {
+    return Marker(mapView).apply {
+        position = point
+        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+        icon = BitmapDrawable(mapView.context.resources, clusterBitmap(count))
+        setInfoWindow(null)
+    }
+}
+
+private fun clusterBitmap(count: Int): Bitmap {
+    val density = 2.5f
+    val diameter = 46 * density
+    val shadowPad = 10f
+    val size = (diameter + shadowPad * 2).toInt()
+
+    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val cx = size / 2f
+    val cy = size / 2f
+    val radius = diameter / 2f
+
+    val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = AndroidColor.argb(70, 0, 0, 0)
+        maskFilter = android.graphics.BlurMaskFilter(6f, android.graphics.BlurMaskFilter.Blur.NORMAL)
+    }
+    canvas.save()
+    canvas.translate(0f, 3f)
+    canvas.drawCircle(cx, cy, radius, shadowPaint)
+    canvas.restore()
+
+    // Cor sólida escura (não é o mesmo roxo dos pins de parada) + anel branco duplo —
+    // reforça visualmente "isto é outra coisa, não é uma parada".
+    val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = AndroidColor.parseColor("#1F2937") }
+    canvas.drawCircle(cx, cy, radius, fillPaint)
+
+    val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = AndroidColor.WHITE
+        style = Paint.Style.STROKE
+        strokeWidth = 5f
+    }
+    canvas.drawCircle(cx, cy, radius - 4f, ringPaint)
+
+    val label = "+$count"
+    val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = AndroidColor.WHITE
+        textSize = diameter * 0.34f
+        textAlign = Paint.Align.CENTER
+        isFakeBoldText = true
+    }
+    val textY = cy - (textPaint.descent() + textPaint.ascent()) / 2f
+    canvas.drawText(label, cx, textY, textPaint)
+
+    return bitmap
 }
 
 private fun pinBitmap(label: String, hexColor: String, highlighted: Boolean): Bitmap {
