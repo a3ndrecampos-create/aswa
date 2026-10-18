@@ -170,7 +170,17 @@ fun RouteMap(
             }
             mapView
         },
-        update = { render(holder, context) }
+        // As variáveis abaixo são lidas aqui de propósito: é isso que faz o Compose rodar este
+        // bloco de novo quando a seleção/ordem muda (sem isso o mapa não redesenhava e o
+        // toque no número parecia não fazer nada).
+        update = {
+            holder.sorted = sorted
+            holder.origin = origin
+            holder.home = home
+            holder.highlight = highlightOrder
+            holder.onStopClick = onStopMarkerClick
+            render(holder, context)
+        }
     )
 }
 
@@ -276,12 +286,24 @@ private fun handleClick(map: MapLibreMap, latLng: MLatLng, h: MapHolder, ctx: Co
     val rect = RectF(p.x - r, p.y - r * 1.5f, p.x + r, p.y + r * 0.6f)
 
     val stops = map.queryRenderedFeatures(rect, LAYER_STOP, LAYER_DOT)
-    if (stops.isNotEmpty()) {
-        val order = stops[0].getNumberProperty("order")?.toInt() ?: return false
-        h.onStopClick?.invoke(order)
-        return h.onStopClick != null
+    var order: Int? = stops.firstOrNull()?.getNumberProperty("order")?.toInt()
+
+    // Plano B (não depende do desenho da tela): a parada mais perto do toque, até ~28dp.
+    if (order == null) {
+        val pinMode = map.cameraPosition.zoom >= PIN_MIN_ZOOM
+        var best = Float.MAX_VALUE
+        for (d in h.sorted) {
+            val sp = map.projection.toScreenLocation(MLatLng(d.lat, d.lng))
+            val cy = if (pinMode) sp.y - 18 * density else sp.y
+            val dx = sp.x - p.x
+            val dy = cy - p.y
+            val dist = kotlin.math.sqrt(dx * dx + dy * dy)
+            if (dist < 28 * density && dist < best) { best = dist; order = d.order }
+        }
     }
-    return false
+    val o = order ?: return false
+    h.onStopClick?.invoke(o)
+    return h.onStopClick != null
 }
 
 /** Bolinha numerada (visão aberta do mapa): círculo colorido com borda branca e sombra. */
