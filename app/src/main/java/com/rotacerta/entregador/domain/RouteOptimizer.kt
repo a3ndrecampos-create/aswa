@@ -43,30 +43,65 @@ object RouteOptimizer {
      * Com roundTrip = true soma também a perna de volta até returnPoint.
      * Retorna a lista com `order` atualizado (1-based); paradas no mesmo prédio dividem número.
      */
+    data class OptimizeResult(
+        val deliveries: List<Delivery>,
+        val distanceKm: Double,
+        val baselineKm: Double,
+        val usedRoads: Boolean
+    )
+
+    /** Pontos de ancoragem (início, fim) usados pela otimização, conforme as configurações. */
+    fun anchors(
+        origin: LatLng?, direction: RouteSortDirection, roundTrip: Boolean, returnPoint: LatLng?
+    ): Pair<LatLng?, LatLng?> {
+        val farthest = direction == RouteSortDirection.FARTHEST_FIRST
+        val start = if (farthest) null else origin
+        val end: LatLng? = when {
+            farthest -> origin
+            roundTrip -> returnPoint ?: origin
+            else -> null
+        }
+        return start to end
+    }
+
+    /** Lista de pontos na ordem esperada pela matriz: paradas, início, fim (n + 2 pontos). */
+    fun matrixPoints(stops: List<Delivery>, start: LatLng?, end: LatLng?): List<LatLng> {
+        val filler = LatLng(stops[0].lat, stops[0].lng)
+        return stops.map { LatLng(it.lat, it.lng) } + listOf(start ?: filler, end ?: filler)
+    }
+
     fun optimize(
         pending: List<Delivery>,
         origin: LatLng?,
         direction: RouteSortDirection = RouteSortDirection.NEAREST_FIRST,
         roundTrip: Boolean = false,
         returnPoint: LatLng? = origin
-    ): List<Delivery> {
-        if (pending.size < 2) return pending
+    ): List<Delivery> = optimizeDetailed(pending, origin, direction, roundTrip, returnPoint).deliveries
+
+    /**
+     * Igual a [optimize], mas aceita uma matriz de distâncias reais por ruas (km, n+2 x n+2,
+     * ver [matrixPoints]) e devolve também a distância total e a da ordem anterior.
+     */
+    fun optimizeDetailed(
+        pending: List<Delivery>,
+        origin: LatLng?,
+        direction: RouteSortDirection = RouteSortDirection.NEAREST_FIRST,
+        roundTrip: Boolean = false,
+        returnPoint: LatLng? = origin,
+        roadKm: Array<DoubleArray>? = null
+    ): OptimizeResult {
+        if (pending.size < 2) return OptimizeResult(pending, 0.0, 0.0, false)
 
         val farthest = direction == RouteSortDirection.FARTHEST_FIRST
-        val startAnchor = if (farthest) null else origin
-        val endAnchor: LatLng? = when {
-            farthest -> origin
-            roundTrip -> returnPoint ?: origin
-            else -> null
-        }
+        val (startAnchor, endAnchor) = anchors(origin, direction, roundTrip, returnPoint)
 
-        val ordered = solve(pending, startAnchor, endAnchor, usePenalties = !farthest)
-        val finalOrder = if (farthest) ordered.reversed() else ordered
+        val solved = solve(pending, startAnchor, endAnchor, usePenalties = !farthest, roadKm = roadKm)
+        val finalOrder = if (farthest) solved.order.reversed() else solved.order
 
         var stopNumber = 0
         var lastLat: Double? = null
         var lastLng: Double? = null
-        return finalOrder.map { d ->
+        val numbered = finalOrder.map { d ->
             val mesmoLocal = lastLat != null && lastLng != null &&
                 haversineKm(lastLat!!, lastLng!!, d.lat, d.lng) * 1000 <= SAME_STOP_RADIUS_METERS
             if (!mesmoLocal) stopNumber++
@@ -74,7 +109,10 @@ object RouteOptimizer {
             lastLng = d.lng
             d.copy(order = stopNumber)
         }
+        return OptimizeResult(numbered, solved.km, solved.baselineKm, roadKm != null)
     }
+
+    private class Solved(val order: List<Delivery>, val km: Double, val baselineKm: Double)
 
     private fun deadlineMinutes(d: Delivery): Int? {
         val parts = d.deadline.trim().split(":")
@@ -85,8 +123,9 @@ object RouteOptimizer {
     }
 
     private fun solve(
-        stops: List<Delivery>, start: LatLng?, end: LatLng?, usePenalties: Boolean
-    ): List<Delivery> {
+        stops: List<Delivery>, start: LatLng?, end: LatLng?, usePenalties: Boolean,
+        roadKm: Array<DoubleArray>? = null
+    ): Solved {
         val n = stops.size
         val sIdx = n
         val eIdx = n + 1
@@ -95,7 +134,16 @@ object RouteOptimizer {
         for (i in 0 until n) { lat[i] = stops[i].lat; lng[i] = stops[i].lng }
         start?.let { lat[sIdx] = it.lat; lng[sIdx] = it.lng }
         end?.let { lat[eIdx] = it.lat; lng[eIdx] = it.lng }
-        val dist = Array(n + 2) { i -> DoubleArray(n + 2) { j -> if (i == j) 0.0 else haversineKm(lat[i], lng[i], lat[j], lng[j]) } }
+        val dist = if (roadKm != null && roadKm.size == n + 2) roadKm
+        else Array(n + 2) { i -> DoubleArray(n + 2) { j -> if (i == j) 0.0 else haversineKm(lat[i], lng[i], lat[j], lng[j]) } }
+
+        fun pathKm(r: IntArray): Double {
+            var t = 0.0
+            var prev = if (start != null) sIdx else -1
+            for (node in r) { if (prev >= 0) t += dist[prev][node]; prev = node }
+            if (end != null && prev >= 0) t += dist[prev][eIdx]
+            return t
+        }
 
         val cal = java.util.Calendar.getInstance()
         val nowMin = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)
@@ -210,7 +258,8 @@ object RouteOptimizer {
             val (r, c) = improve(nearestNeighbor(f))
             if (c < bestCost) { bestCost = c; bestRoute = r }
         }
-        return bestRoute!!.map { stops[it] }
+        val best = bestRoute!!
+        return Solved(best.map { stops[it] }, pathKm(best), pathKm(IntArray(n) { it }))
     }
 
     data class RouteStats(val pendingCount: Int, val distanceKm: Double, val etaMillis: Long?)

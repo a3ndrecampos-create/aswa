@@ -10,6 +10,7 @@ import com.rotacerta.entregador.domain.BackupManager
 import com.rotacerta.entregador.domain.BackupPayload
 import com.rotacerta.entregador.domain.GeocodingService
 import com.rotacerta.entregador.domain.LatLng
+import com.rotacerta.entregador.domain.RoadMatrixService
 import com.rotacerta.entregador.domain.RouteOptimizer
 import com.rotacerta.entregador.domain.XlsxImporter
 import com.rotacerta.entregador.network.CepResponse
@@ -189,12 +190,26 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
             val cfg = config.value
             val origin = cfg.originLat?.let { lat -> cfg.originLng?.let { lng -> LatLng(lat, lng) } }
             val returnPoint = cfg.homeLat?.let { lat -> cfg.homeLng?.let { lng -> LatLng(lat, lng) } } ?: origin
+            val sortedPending = pending.sortedBy { it.order }
+            val (startAnchor, endAnchor) = RouteOptimizer.anchors(origin, cfg.sortDirection, cfg.roundTrip, returnPoint)
+            // Distâncias reais por ruas (OSRM). Se falhar, usa linha reta.
+            val roadKm = if (sortedPending.size <= 80)
+                RoadMatrixService.fetchKm(RouteOptimizer.matrixPoints(sortedPending, startAnchor, endAnchor))
+            else null
             // Fora da thread principal: a otimização pode levar até ~1,5 s em rotas grandes.
-            val optimized = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-                RouteOptimizer.optimize(pending, origin, cfg.sortDirection, cfg.roundTrip, returnPoint)
+            val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                RouteOptimizer.optimizeDetailed(sortedPending, origin, cfg.sortDirection, cfg.roundTrip, returnPoint, roadKm)
             }
+            val optimized = result.deliveries
             deliveryDao.updateAll(optimized)
-            _toast.emit("Rota otimizada! ${optimized.size} paradas reordenadas.")
+            val paradas = optimized.map { it.order }.distinct().size
+            val km = String.format(java.util.Locale.US, "%.1f", result.distanceKm).replace('.', ',')
+            val saved = if (result.baselineKm > 0.05) ((1 - result.distanceKm / result.baselineKm) * 100).toInt() else 0
+            val tipo = if (result.usedRoads) "por ruas" else "estimado, sem internet"
+            _toast.emit(
+                "Rota otimizada: $paradas paradas · $km km ($tipo)" +
+                    if (saved >= 1) " · $saved% menos que a ordem anterior" else ""
+            )
         }
     }
 
