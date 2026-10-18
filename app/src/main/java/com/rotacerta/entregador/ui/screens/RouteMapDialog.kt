@@ -23,7 +23,7 @@ import com.rotacerta.entregador.domain.LatLng
 import com.rotacerta.entregador.ui.components.RouteMap
 
 /**
- * Mostra a rota inteira num mapa nativo (OpenStreetMap via osmdroid). Marca a origem
+ * Mostra a rota inteira num mapa vetorial (MapLibre). Marca a origem
  * (🏁), cada parada numerada, e o destino final quando "ida e volta" estiver ativado.
  */
 @Composable

@@ -98,6 +98,7 @@ fun MapScreen(viewModel: RotaViewModel) {
                 roundTrip = config.roundTrip,
                 highlightOrder = highlightOrder,
                 onStopMarkerClick = if (editMode) { order -> handleStopTap(order) } else null,
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 96.dp, bottom = if (editMode) 200.dp else 0.dp),
                 modifier = Modifier.fillMaxSize()
             )
         }

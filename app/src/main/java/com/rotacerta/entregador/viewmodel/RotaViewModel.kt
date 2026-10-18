@@ -189,7 +189,10 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
             val cfg = config.value
             val origin = cfg.originLat?.let { lat -> cfg.originLng?.let { lng -> LatLng(lat, lng) } }
             val returnPoint = cfg.homeLat?.let { lat -> cfg.homeLng?.let { lng -> LatLng(lat, lng) } } ?: origin
-            val optimized = RouteOptimizer.optimize(pending, origin, cfg.sortDirection, cfg.roundTrip, returnPoint)
+            // Fora da thread principal: a otimização pode levar até ~1,5 s em rotas grandes.
+            val optimized = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                RouteOptimizer.optimize(pending, origin, cfg.sortDirection, cfg.roundTrip, returnPoint)
+            }
             deliveryDao.updateAll(optimized)
             _toast.emit("Rota otimizada! ${optimized.size} paradas reordenadas.")
         }

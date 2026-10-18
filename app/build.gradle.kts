@@ -32,6 +32,7 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
     }
 
     signingConfigs {
@@ -154,8 +155,9 @@ dependencies {
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
-    // Mapa (osmdroid — mapas do OpenStreetMap, nativo, sem precisar de API key/cadastro)
-    implementation("org.osmdroid:osmdroid-android:6.1.20")
+    // Mapa: MapLibre (mapa vetorial moderno, GPU, grátis, sem chave de API nem cartão).
+    // Os mapas vêm do OpenFreeMap (dados OpenStreetMap, estilo claro "positron").
+    implementation("org.maplibre.gl:android-sdk:13.6.1")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

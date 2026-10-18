@@ -1,18 +1,16 @@
 <resources>
-    <style name="Theme.RotaCerta" parent="android:Theme.Material.NoActionBar">
-        <item name="android:statusBarColor">#0F1115</item>
-        <item name="android:windowBackground">#0F1115</item>
+    <style name="Theme.RotaCerta" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">#F4F6FA</item>
+        <item name="android:navigationBarColor">#FFFFFF</item>
+        <item name="android:windowBackground">#F4F6FA</item>
+        <item name="android:windowLightStatusBar">true</item>
     </style>
 
-    <!-- Tela de abertura: fundo escuro da identidade visual + ícone do app, some assim
-         que a MainActivity chama installSplashScreen()/super.onCreate(). Sem isso, o
-         Android mostra uma tela branca/preta genérica por uma fração de segundo antes
-         do app aparecer — pequeno detalhe que separa um app "feito às pressas" de um
-         com acabamento profissional. -->
+    <!-- Tela de abertura clara, com o ícone do app. -->
     <style name="Theme.RotaCerta.Splash" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">#0F1115</item>
+        <item name="windowSplashScreenBackground">#FFFFFF</item>
         <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
-        <item name="windowSplashScreenIconBackgroundColor">#0F1115</item>
+        <item name="windowSplashScreenIconBackgroundColor">#FFFFFF</item>
         <item name="postSplashScreenTheme">@style/Theme.RotaCerta</item>
     </style>
 </resources>

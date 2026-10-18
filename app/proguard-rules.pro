@@ -21,9 +21,8 @@
 # ZXing (leitor de código de rastreio)
 -keep class com.google.zxing.** { *; }
 
-# osmdroid (mapa)
--keep class org.osmdroid.** { *; }
--dontwarn org.osmdroid.**
+# MapLibre (regras já vêm na biblioteca)
+-dontwarn org.maplibre.**
 
 # Google Play Billing (assinatura Flex Pro)
 -keep class com.android.billingclient.** { *; }

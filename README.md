@@ -6,7 +6,7 @@ Play: **Flex Otimizador de Rota**. Pacote (`applicationId`): `com.flexotimizador
 ## O que já está implementado
 - Lista de entregas com prioridade, prazo, valor, status (pendente/entregue)
 - Otimização de rota (vizinho mais próximo + refinamento 2-opt)
-- Mapa nativo com OpenStreetMap (osmdroid — não precisa de chave de API do Google), com
+- Mapa vetorial moderno com MapLibre + OpenFreeMap (grátis, sem chave de API nem cartão), com
   edição de sequência por arrastar ou por toque (selecionar + mover), inclusive tocando
   direto no número da parada no mapa
 - Busca de endereço por CEP (ViaCEP) e geocodificação em camadas (Nominatim/OSM)
@@ -73,7 +73,7 @@ tem como atualizar o app publicado depois, só publicar um app novo do zero.
 - `androidx.camera:*` atualizado pra `1.5.1` (corrige o alinhamento de 16KB de outra
   biblioteca nativa da câmera, `libimage_processing_util_jni.so`).
 - `isMinifyEnabled = true` no release, com regras de ProGuard (`proguard-rules.pro`)
-  cobrindo Room, Retrofit/Gson, ML Kit, ZXing, osmdroid e Billing.
+  cobrindo Room, Retrofit/Gson, ML Kit, ZXing e Billing.
 
 ## Antes de publicar (checklist)
 - [ ] Criar a keystore de release e guardar em lugar seguro (ver seção acima)
@@ -109,3 +109,4 @@ app/src/main/java/com/rotacerta/entregador/
 - Este projeto não é compilado no ambiente onde é editado (sem acesso ao Android SDK).
   Sempre teste com `gradlew assembleDebug` (ou equivalente) antes de considerar uma
   mudança pronta.
+

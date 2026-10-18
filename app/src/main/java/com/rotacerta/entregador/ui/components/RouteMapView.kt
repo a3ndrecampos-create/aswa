@@ -1,64 +1,79 @@
 package com.rotacerta.entregador.ui.components
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color as AndroidColor
 import android.graphics.Paint
 import android.graphics.Path
-import android.graphics.Point
-import android.graphics.drawable.BitmapDrawable
+import android.graphics.RectF
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.rotacerta.entregador.data.Delivery
 import com.rotacerta.entregador.domain.LatLng
 import com.rotacerta.entregador.ui.theme.Muted
-import org.osmdroid.config.Configuration
-import org.osmdroid.events.MapListener
-import org.osmdroid.events.ScrollEvent
-import org.osmdroid.events.ZoomEvent
-import org.osmdroid.tileprovider.tilesource.TileSourceFactory
-import org.osmdroid.util.BoundingBox
-import org.osmdroid.util.GeoPoint
-import org.osmdroid.views.CustomZoomButtonsController
-import org.osmdroid.views.MapView
-import org.osmdroid.views.overlay.Marker
-import java.io.File
+import org.maplibre.android.MapLibre
+import org.maplibre.android.camera.CameraPosition
+import org.maplibre.android.camera.CameraUpdateFactory
+import org.maplibre.android.geometry.LatLngBounds
+import org.maplibre.android.maps.MapLibreMap
+import org.maplibre.android.maps.MapView
+import org.maplibre.android.maps.Style
+import org.maplibre.android.style.expressions.Expression
+import org.maplibre.android.style.layers.Property
+import org.maplibre.android.style.layers.PropertyFactory
+import org.maplibre.android.style.layers.SymbolLayer
+import org.maplibre.android.style.sources.GeoJsonOptions
+import org.maplibre.android.style.sources.GeoJsonSource
+import org.maplibre.geojson.Feature
+import org.maplibre.geojson.FeatureCollection
+import org.maplibre.geojson.Point
+import org.maplibre.android.geometry.LatLng as MLatLng
 
-// O estilo "Voyager" da CartoDB (usado antes aqui) passou a exigir uma API key deles —
-// sem ela, os tiles vêm com uma marca d'água "API KEY REQUIRED" por cima do mapa inteiro.
-// Isso mudou do lado da CartoDB, não é algo que dava pra prever. Trocado pelo Mapnik, o
-// estilo padrão do próprio OpenStreetMap: menos "moderno" visualmente, mas garantidamente
-// gratuito pra sempre — não depende de nenhuma empresa terceira que possa mudar de
-// política do dia pra noite.
+// Mapa vetorial (GPU) do OpenFreeMap: dados do OpenStreetMap, estilo claro e limpo, grátis,
+// sem chave de API e sem cadastro. Outros estilos prontos: .../styles/bright e .../styles/liberty
+private const val MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/positron"
 
-/** Guarda os dados mais recentes pra reconstruir os marcadores a qualquer momento — tanto
- *  quando os dados mudam (Compose) quanto quando só o zoom/posição do mapa muda (gesto
- *  nativo, que o Compose nem fica sabendo que aconteceu). */
-private class MapRenderState {
-    var sortedDeliveries: List<Delivery> = emptyList()
+private const val PIN_COLOR = "#2563EB"
+private const val END_COLOR = "#16A34A"
+private const val CLUSTER_COLOR = "#0F172A"
+
+private const val SRC_STOPS = "stops-src"
+private const val SRC_ENDS = "ends-src"
+private const val LAYER_CLUSTER = "cluster-layer"
+private const val LAYER_STOP = "stop-layer"
+private const val LAYER_ENDS = "ends-layer"
+
+private class MapHolder {
+    var map: MapLibreMap? = null
+    var style: Style? = null
+    var sorted: List<Delivery> = emptyList()
     var origin: LatLng? = null
-    var returnPoint: LatLng? = null
-    var roundTrip: Boolean = false
-    var highlightOrder: Int? = null
-    var onStopMarkerClick: ((Int) -> Unit)? = null
+    var home: LatLng? = null
+    var highlight: Int? = null
+    var onStopClick: ((Int) -> Unit)? = null
+    var padL = 0; var padT = 0; var padR = 0; var padB = 0
+    var fittedKey: String? = null
+    var view: MapView? = null
 }
 
 /**
- * Mapa da rota usando osmdroid (mapas do OpenStreetMap, renderização nativa — não é
- * WebView). Diferente do Google Maps, não precisa de nenhuma API key nem cadastro no
- * Google Cloud: os "tiles" (imagens do mapa) vêm direto dos servidores públicos do
- * OpenStreetMap, de graça.
- *
- * As paradas próximas na tela (não no mapa real — na TELA, que muda com o zoom) são
- * agrupadas num "bolhão" com o número de paradas ali dentro, em vez de ficarem uma por
- * cima da outra — mesmo comportamento do Uber/Google Maps. Dando zoom ou tocando no
- * bolhão, ele se separa nos pins individuais.
+ * Mapa da rota com MapLibre. Sem linhas ligando os pontos: só pins numerados, agrupados em
+ * bolhas "+N" quando ficam apertados (o agrupamento é feito pela GPU, então o zoom fica
+ * fluido). Tocar numa bolha aproxima o mapa; tocar num pin chama [onStopMarkerClick].
  */
 @Composable
 fun RouteMap(
@@ -68,293 +83,280 @@ fun RouteMap(
     roundTrip: Boolean,
     highlightOrder: Int? = null,
     onStopMarkerClick: ((Int) -> Unit)? = null,
+    contentPadding: PaddingValues = PaddingValues(0.dp),
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val sortedDeliveries = remember(deliveries) { deliveries.sortedBy { it.order }.distinctBy { it.order } }
+    val density = context.resources.displayMetrics.density
+    val sorted = remember(deliveries) { deliveries.sortedBy { it.order }.distinctBy { it.order } }
+    val home = if (roundTrip) (returnPoint ?: origin) else null
 
-    val allPoints = remember(sortedDeliveries, origin, returnPoint, roundTrip) {
-        buildList {
-            origin?.let { add(GeoPoint(it.lat, it.lng)) }
-            sortedDeliveries.forEach { add(GeoPoint(it.lat, it.lng)) }
-            if (roundTrip) (returnPoint ?: origin)?.let { add(GeoPoint(it.lat, it.lng)) }
-        }
-    }
-
-    if (allPoints.isEmpty()) {
+    if (sorted.isEmpty() && origin == null) {
         Box(modifier, contentAlignment = Alignment.Center) {
             Text("Sem paradas pra mostrar no mapa.", color = Muted)
         }
         return
     }
 
-    val renderState = remember { MapRenderState() }
-    renderState.sortedDeliveries = sortedDeliveries
-    renderState.origin = origin
-    renderState.returnPoint = returnPoint
-    renderState.roundTrip = roundTrip
-    renderState.highlightOrder = highlightOrder
-    renderState.onStopMarkerClick = onStopMarkerClick
+    val holder = remember { MapHolder() }
+    holder.sorted = sorted
+    holder.origin = origin
+    holder.home = home
+    holder.highlight = highlightOrder
+    holder.onStopClick = onStopMarkerClick
+    val dir = LocalLayoutDirection.current
+    holder.padL = (contentPadding.calculateLeftPadding(dir).value * density).toInt()
+    holder.padR = (contentPadding.calculateRightPadding(dir).value * density).toInt()
+    holder.padT = (contentPadding.calculateTopPadding().value * density).toInt()
+    holder.padB = (contentPadding.calculateBottomPadding().value * density).toInt()
+
+    val mapView = remember {
+        MapLibre.getInstance(context.applicationContext)
+        MapView(context).also { it.onCreate(null); holder.view = it }
+    }
+
+    // Repassa o ciclo de vida da tela pro MapView (obrigatório no MapLibre).
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle, mapView) {
+        var started = false
+        var resumed = false
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> { mapView.onStart(); started = true }
+                Lifecycle.Event.ON_RESUME -> { mapView.onResume(); resumed = true }
+                Lifecycle.Event.ON_PAUSE -> if (resumed) { mapView.onPause(); resumed = false }
+                Lifecycle.Event.ON_STOP -> if (started) { mapView.onStop(); started = false }
+                else -> {}
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose {
+            lifecycle.removeObserver(observer)
+            if (resumed) mapView.onPause()
+            if (started) mapView.onStop()
+            mapView.onDestroy()
+        }
+    }
 
     AndroidView(
         modifier = modifier,
-        factory = { ctx ->
-            // O OSM pede um User-Agent identificável (mesma regra de boas práticas que já
-            // seguimos no Nominatim) e um diretório de cache — usar o cache interno do app
-            // evita precisar de permissão de armazenamento.
-            Configuration.getInstance().userAgentValue = ctx.packageName
-            Configuration.getInstance().osmdroidTileCache = File(ctx.cacheDir, "osmdroid")
-
-            MapView(ctx).apply {
-                setTileSource(TileSourceFactory.MAPNIK)
-                setMultiTouchControls(true)
-                // Os botões +/- nativos do osmdroid aparecem como um popup flutuante por
-                // cima de TODA a tela (não ficam presos dentro da área do mapa) — foi isso
-                // que tampava o botão "Editar sequência" ao dar zoom. Como já temos zoom
-                // por pinça (setMultiTouchControls acima), desativamos esses botões extras.
-                zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
-                setBuiltInZoomControls(false)
-                controller.setZoom(13.0)
-                val center = GeoPoint(
-                    allPoints.map { it.latitude }.average(),
-                    allPoints.map { it.longitude }.average()
-                )
-                controller.setCenter(center)
-
-                // Refaz os pins sempre que o usuário dá zoom ou arrasta o mapa — é só
-                // nesse momento que dá pra saber quais paradas ficaram perto na TELA (a
-                // mesma distância real em metros fica mais apertada ou mais espaçada na
-                // tela dependendo do zoom).
-                addMapListener(object : MapListener {
-                    override fun onScroll(event: ScrollEvent?): Boolean {
-                        rebuildMarkers(this@apply, renderState)
-                        return false
-                    }
-                    override fun onZoom(event: ZoomEvent?): Boolean {
-                        rebuildMarkers(this@apply, renderState)
-                        return false
-                    }
-                })
-            }
-        },
-        update = { mapView ->
-            rebuildMarkers(mapView, renderState)
-
-            if (allPoints.size > 1) {
-                val bbox = BoundingBox.fromGeoPoints(allPoints)
-                mapView.post {
-                    runCatching { mapView.zoomToBoundingBox(bbox, true, 100) }
+        factory = {
+            mapView.getMapAsync { map ->
+                holder.map = map
+                map.uiSettings.apply {
+                    isCompassEnabled = false
+                    isRotateGesturesEnabled = false
+                    isTiltGesturesEnabled = false
+                    isLogoEnabled = false
+                }
+                val first = holder.sorted.firstOrNull()?.let { MLatLng(it.lat, it.lng) }
+                    ?: holder.origin?.let { MLatLng(it.lat, it.lng) }
+                if (first != null) {
+                    map.cameraPosition = CameraPosition.Builder().target(first).zoom(13.0).build()
+                }
+                map.setStyle(Style.Builder().fromUri(MAP_STYLE_URL)) { style ->
+                    holder.style = style
+                    setupLayers(style)
+                    render(holder, mapView.context)
+                    // Se o mapa ainda não tinha tamanho, enquadra assim que ele tiver.
+                    mapView.post { render(holder, mapView.context) }
+                }
+                map.addOnMapClickListener { latLng ->
+                    handleClick(map, latLng, holder, mapView.context)
                 }
             }
-        }
+            mapView
+        },
+        update = { render(holder, context) }
     )
 }
 
-/** Raio em pixels de tela: paradas mais perto que isso uma da outra viram um bolhão único. */
-private const val CLUSTER_RADIUS_PX = 55.0
+private fun setupLayers(style: Style) {
+    style.addSource(
+        GeoJsonSource(
+            SRC_STOPS, FeatureCollection.fromFeatures(emptyList<Feature>()),
+            GeoJsonOptions().withCluster(true).withClusterRadius(48).withClusterMaxZoom(17)
+        )
+    )
+    style.addSource(GeoJsonSource(SRC_ENDS, FeatureCollection.fromFeatures(emptyList<Feature>())))
 
-private fun rebuildMarkers(mapView: MapView, state: MapRenderState) {
-    mapView.overlays.clear()
+    style.addLayer(
+        SymbolLayer(LAYER_ENDS, SRC_ENDS).withProperties(
+            PropertyFactory.iconImage(Expression.get("icon")),
+            PropertyFactory.iconAnchor(Property.ICON_ANCHOR_BOTTOM),
+            PropertyFactory.iconAllowOverlap(true),
+            PropertyFactory.iconIgnorePlacement(true)
+        )
+    )
+    style.addLayer(
+        SymbolLayer(LAYER_CLUSTER, SRC_STOPS).withProperties(
+            PropertyFactory.iconImage(
+                Expression.concat(Expression.literal("cl-"), Expression.toString(Expression.get("point_count")))
+            ),
+            PropertyFactory.iconAllowOverlap(true),
+            PropertyFactory.iconIgnorePlacement(true)
+        ).apply { setFilter(Expression.has("point_count")) }
+    )
+    style.addLayer(
+        SymbolLayer(LAYER_STOP, SRC_STOPS).withProperties(
+            PropertyFactory.iconImage(Expression.get("icon")),
+            PropertyFactory.iconAnchor(Property.ICON_ANCHOR_BOTTOM),
+            PropertyFactory.iconAllowOverlap(true),
+            PropertyFactory.iconIgnorePlacement(true),
+            PropertyFactory.symbolSortKey(Expression.get("sk"))
+        ).apply { setFilter(Expression.not(Expression.has("point_count"))) }
+    )
+}
 
-    state.origin?.let {
-        mapView.overlays.add(pinMarker(mapView, GeoPoint(it.lat, it.lng), "🏁", "#2FA86A"))
+private fun ensureImage(style: Style, name: String, make: () -> Bitmap) {
+    if (style.getImage(name) == null) style.addImage(name, make())
+}
+
+private fun render(h: MapHolder, ctx: Context) {
+    val map = h.map ?: return
+    val style = h.style ?: return
+    if (!style.isFullyLoaded) return
+    val density = ctx.resources.displayMetrics.density
+
+    ensureImage(style, "origin") { pinBitmap("🏁", END_COLOR, false, density) }
+    ensureImage(style, "home") { pinBitmap("🏠", END_COLOR, false, density) }
+    for (d in h.sorted) {
+        ensureImage(style, "pin-${d.order}") { pinBitmap(d.order.toString(), PIN_COLOR, false, density) }
+        ensureImage(style, "pinh-${d.order}") { pinBitmap(d.order.toString(), PIN_COLOR, true, density) }
+    }
+    for (k in 2..maxOf(2, h.sorted.size)) {
+        ensureImage(style, "cl-$k") { clusterBitmap(k, density) }
     }
 
-    // Agrupamento simples: projeta cada parada pra posição em pixels na tela atual, e junta
-    // (algoritmo guloso) quem está a menos de CLUSTER_RADIUS_PX de distância uma da outra.
-    val projection = mapView.projection
-    data class Entry(val delivery: Delivery, val screenX: Int, val screenY: Int)
-    val entries = state.sortedDeliveries.map { d ->
-        val pt = Point()
-        projection.toPixels(GeoPoint(d.lat, d.lng), pt)
-        Entry(d, pt.x, pt.y)
+    val stopFeatures = h.sorted.map { d ->
+        val hl = d.order == h.highlight
+        Feature.fromGeometry(Point.fromLngLat(d.lng, d.lat)).also {
+            it.addNumberProperty("order", d.order)
+            it.addStringProperty("icon", if (hl) "pinh-${d.order}" else "pin-${d.order}")
+            it.addNumberProperty("sk", if (hl) 1 else 0)
+        }
     }
+    (style.getSource(SRC_STOPS) as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures(stopFeatures))
 
-    val used = BooleanArray(entries.size)
-    for (i in entries.indices) {
-        if (used[i]) continue
-        val group = mutableListOf(entries[i])
-        used[i] = true
-        for (j in i + 1 until entries.size) {
-            if (used[j]) continue
-            val dx = (entries[i].screenX - entries[j].screenX).toDouble()
-            val dy = (entries[i].screenY - entries[j].screenY).toDouble()
-            if (dx * dx + dy * dy < CLUSTER_RADIUS_PX * CLUSTER_RADIUS_PX) {
-                group.add(entries[j])
-                used[j] = true
+    val endFeatures = buildList {
+        h.origin?.let { add(Feature.fromGeometry(Point.fromLngLat(it.lng, it.lat)).also { f -> f.addStringProperty("icon", "origin") }) }
+        h.home?.let { add(Feature.fromGeometry(Point.fromLngLat(it.lng, it.lat)).also { f -> f.addStringProperty("icon", "home") }) }
+    }
+    (style.getSource(SRC_ENDS) as? GeoJsonSource)?.setGeoJson(FeatureCollection.fromFeatures(endFeatures))
+
+    // Enquadra todas as paradas só quando o conjunto de pontos muda (não a cada destaque).
+    val pts = buildList {
+        h.origin?.let { add(MLatLng(it.lat, it.lng)) }
+        h.sorted.forEach { add(MLatLng(it.lat, it.lng)) }
+        h.home?.let { add(MLatLng(it.lat, it.lng)) }
+    }
+    val key = pts.joinToString("|") { "%.5f,%.5f".format(it.latitude, it.longitude) }
+    val viewReady = (h.view?.width ?: 0) > 0 && (h.view?.height ?: 0) > 0
+    if (key != h.fittedKey && pts.isNotEmpty() && viewReady) {
+        h.fittedKey = key
+        runCatching {
+            if (pts.size == 1) {
+                map.moveCamera(CameraUpdateFactory.newLatLngZoom(pts[0], 16.0))
+            } else {
+                val b = LatLngBounds.Builder().includes(pts).build()
+                val m = (48 * density).toInt()
+                map.moveCamera(
+                    CameraUpdateFactory.newLatLngBounds(b, h.padL + m, h.padT + m, h.padR + m, h.padB + m)
+                )
             }
         }
+    }
+}
 
-        if (group.size == 1) {
-            val d = group[0].delivery
-            val marker = pinMarker(
-                mapView, GeoPoint(d.lat, d.lng), d.order.toString(), "#8B5CF6",
-                highlighted = d.order == state.highlightOrder
+private fun handleClick(map: MapLibreMap, latLng: MLatLng, h: MapHolder, ctx: Context): Boolean {
+    val density = ctx.resources.displayMetrics.density
+    val p = map.projection.toScreenLocation(latLng)
+    val r = 26 * density
+    // Os pins têm a ponta embaixo: a área de toque é deslocada um pouco pra cima.
+    val rect = RectF(p.x - r, p.y - r * 1.6f, p.x + r, p.y + r * 0.6f)
+
+    val clusters = map.queryRenderedFeatures(rect, LAYER_CLUSTER)
+    if (clusters.isNotEmpty()) {
+        val g = clusters[0].geometry() as? Point ?: return false
+        map.animateCamera(
+            CameraUpdateFactory.newLatLngZoom(
+                MLatLng(g.latitude(), g.longitude()), map.cameraPosition.zoom + 2.5
             )
-            state.onStopMarkerClick?.let { onClick ->
-                marker.setOnMarkerClickListener { _, _ -> onClick(d.order); true }
-            }
-            mapView.overlays.add(marker)
-        } else {
-            val avgLat = group.map { it.delivery.lat }.average()
-            val avgLng = group.map { it.delivery.lng }.average()
-            // Visual BEM diferente do pin de parada (círculo cheio, sem pontinha, com "+"
-            // na frente do número) — com o mesmo formato de pin, "2" ou "3" aqui parecia a
-            // ORDEM da parada repetida, dando a impressão de rota errada quando na
-            // verdade é só "tem 2/3 paradas perto daqui".
-            val clusterMarker = clusterMarker(mapView, GeoPoint(avgLat, avgLng), group.size)
-            // Tocar no bolhão aproxima o mapa ali, separando as paradas de dentro dele.
-            clusterMarker.setOnMarkerClickListener { _, mv ->
-                mv.controller.animateTo(GeoPoint(avgLat, avgLng))
-                mv.controller.zoomTo((mv.zoomLevelDouble + 2.5).coerceAtMost(20.0))
-                true
-            }
-            mapView.overlays.add(clusterMarker)
-        }
+        )
+        return true
     }
-
-    if (state.roundTrip) {
-        (state.returnPoint ?: state.origin)?.let {
-            mapView.overlays.add(pinMarker(mapView, GeoPoint(it.lat, it.lng), "🏠", "#2FA86A"))
-        }
+    val stops = map.queryRenderedFeatures(rect, LAYER_STOP)
+    if (stops.isNotEmpty()) {
+        val order = stops[0].getNumberProperty("order")?.toInt() ?: return false
+        h.onStopClick?.invoke(order)
+        return h.onStopClick != null
     }
-
-    mapView.invalidate()
+    return false
 }
 
-/**
- * Marcador em formato de "pin/gota" (círculo com uma pontinha embaixo apontando pro
- * local exato) com sombra suave por baixo — o mesmo visual que Uber, 99 e Google Maps
- * usam. A ponta da gota é o ponto de ancoragem: é ela, não o centro do círculo, que marca
- * a coordenada exata no mapa.
- */
-private fun pinMarker(mapView: MapView, point: GeoPoint, label: String, hexColor: String, highlighted: Boolean = false): Marker {
-    return Marker(mapView).apply {
-        position = point
-        // (0.5, 1.0) = centro horizontal, borda de baixo — é onde fica a ponta da gota.
-        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-        icon = BitmapDrawable(mapView.context.resources, pinBitmap(label, hexColor, highlighted))
-        setInfoWindow(null)
-    }
-}
-
-/**
- * Bolhão de agrupamento: círculo CHEIO, sem pontinha embaixo (porque não representa um
- * local exato, representa uma área com várias paradas dentro) — visual propositalmente
- * diferente do pin de parada, pra nunca ser confundido com o número de ordem da rota.
- */
-private fun clusterMarker(mapView: MapView, point: GeoPoint, count: Int): Marker {
-    return Marker(mapView).apply {
-        position = point
-        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
-        icon = BitmapDrawable(mapView.context.resources, clusterBitmap(count))
-        setInfoWindow(null)
-    }
-}
-
-private fun clusterBitmap(count: Int): Bitmap {
-    val density = 2.5f
-    val diameter = 46 * density
-    val shadowPad = 10f
-    val size = (diameter + shadowPad * 2).toInt()
-
+private fun clusterBitmap(count: Int, density: Float): Bitmap {
+    val diameter = 44 * density
+    val pad = 8f
+    val size = (diameter + pad * 2).toInt()
     val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
-    val cx = size / 2f
-    val cy = size / 2f
-    val radius = diameter / 2f
+    val c = size / 2f
+    val r = diameter / 2f
 
-    val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = AndroidColor.argb(70, 0, 0, 0)
+    val shadow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = AndroidColor.argb(60, 0, 0, 0)
         maskFilter = android.graphics.BlurMaskFilter(6f, android.graphics.BlurMaskFilter.Blur.NORMAL)
     }
-    canvas.save()
-    canvas.translate(0f, 3f)
-    canvas.drawCircle(cx, cy, radius, shadowPaint)
-    canvas.restore()
-
-    // Cor sólida escura (não é o mesmo roxo dos pins de parada) + anel branco duplo —
-    // reforça visualmente "isto é outra coisa, não é uma parada".
-    val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = AndroidColor.parseColor("#1F2937") }
-    canvas.drawCircle(cx, cy, radius, fillPaint)
-
-    val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = AndroidColor.WHITE
-        style = Paint.Style.STROKE
-        strokeWidth = 5f
+    canvas.drawCircle(c, c + 3f, r, shadow)
+    canvas.drawCircle(c, c, r, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = AndroidColor.parseColor(CLUSTER_COLOR) })
+    canvas.drawCircle(c, c, r - 3f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = AndroidColor.WHITE; style = Paint.Style.STROKE; strokeWidth = 4f
+    })
+    val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = AndroidColor.WHITE; textSize = diameter * 0.34f
+        textAlign = Paint.Align.CENTER; isFakeBoldText = true
     }
-    canvas.drawCircle(cx, cy, radius - 4f, ringPaint)
-
-    val label = "+$count"
-    val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = AndroidColor.WHITE
-        textSize = diameter * 0.34f
-        textAlign = Paint.Align.CENTER
-        isFakeBoldText = true
-    }
-    val textY = cy - (textPaint.descent() + textPaint.ascent()) / 2f
-    canvas.drawText(label, cx, textY, textPaint)
-
+    canvas.drawText("+$count", c, c - (text.descent() + text.ascent()) / 2f, text)
     return bitmap
 }
 
-private fun pinBitmap(label: String, hexColor: String, highlighted: Boolean): Bitmap {
-    val circleDiameterDp = if (highlighted) 40 else 30
-    val density = 2.5f // aproximação segura sem depender de Context/Resources aqui
-    val circleD = circleDiameterDp * density
+/** Pin em formato de gota; a ponta (borda inferior) é o ponto exato no mapa. */
+private fun pinBitmap(label: String, hexColor: String, highlighted: Boolean, density: Float): Bitmap {
+    val circleD = (if (highlighted) 40 else 30) * density
     val radius = circleD / 2f
-    val tailLength = circleD * 0.55f
-    val shadowPad = 10f
-
-    val width = (circleD + shadowPad * 2).toInt()
-    val height = (circleD + tailLength + shadowPad * 2).toInt()
-    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    val tail = circleD * 0.5f
+    val pad = 8f
+    val w = (circleD + pad * 2).toInt()
+    val h = (circleD + tail + pad * 2).toInt()
+    val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
+    val cx = w / 2f
+    val cy = pad + radius
 
-    val cx = width / 2f
-    val cy = shadowPad + radius
-
-    // Monta o formato gota: círculo em cima + triângulo embaixo, unidos num só contorno.
-    val pinPath = Path().apply {
+    val pin = Path().apply {
         addCircle(cx, cy, radius, Path.Direction.CW)
-        val tail = Path().apply {
-            val tailHalfWidth = radius * 0.62f
-            moveTo(cx - tailHalfWidth, cy + radius * 0.55f)
-            lineTo(cx, cy + radius + tailLength)
-            lineTo(cx + tailHalfWidth, cy + radius * 0.55f)
+        val t = Path().apply {
+            val hw = radius * 0.62f
+            moveTo(cx - hw, cy + radius * 0.55f)
+            lineTo(cx, cy + radius + tail)
+            lineTo(cx + hw, cy + radius * 0.55f)
             close()
         }
-        op(tail, Path.Op.UNION)
+        op(t, Path.Op.UNION)
     }
-
-    // Sombra suave por baixo do pin (mesmo contorno, deslocado e borrado).
-    val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = AndroidColor.argb(70, 0, 0, 0)
+    val shadow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = AndroidColor.argb(60, 0, 0, 0)
         maskFilter = android.graphics.BlurMaskFilter(6f, android.graphics.BlurMaskFilter.Blur.NORMAL)
     }
-    canvas.save()
-    canvas.translate(0f, 3f)
-    canvas.drawPath(pinPath, shadowPaint)
-    canvas.restore()
-
-    val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = AndroidColor.parseColor(hexColor) }
-    canvas.drawPath(pinPath, fillPaint)
-
-    val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = AndroidColor.WHITE
-        style = Paint.Style.STROKE
-        strokeWidth = 4f
+    canvas.save(); canvas.translate(0f, 3f); canvas.drawPath(pin, shadow); canvas.restore()
+    canvas.drawPath(pin, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = AndroidColor.parseColor(hexColor) })
+    canvas.drawPath(pin, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = AndroidColor.WHITE; style = Paint.Style.STROKE; strokeWidth = 4f
+    })
+    val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = AndroidColor.WHITE; textSize = circleD * 0.42f
+        textAlign = Paint.Align.CENTER; isFakeBoldText = true
     }
-    canvas.drawPath(pinPath, borderPaint)
-
-    val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = AndroidColor.WHITE
-        textSize = circleD * 0.42f
-        textAlign = Paint.Align.CENTER
-        isFakeBoldText = true
-    }
-    val textY = cy - (textPaint.descent() + textPaint.ascent()) / 2f
-    canvas.drawText(label, cx, textY, textPaint)
-
+    canvas.drawText(label, cx, cy - (text.descent() + text.ascent()) / 2f, text)
     return bitmap
 }

@@ -279,14 +279,6 @@ fun ConfigScreen(viewModel: RotaViewModel) {
             )
         }
 
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Tema claro", style = MaterialTheme.typography.labelLarge)
-            Switch(
-                checked = config.lightTheme,
-                onCheckedChange = { viewModel.updateConfig { c -> c.copy(lightTheme = it) } }
-            )
-        }
-
         Divider(Modifier.padding(vertical = 8.dp))
 
         val backupState by viewModel.backupState.collectAsState()

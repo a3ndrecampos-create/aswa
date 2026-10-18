@@ -146,11 +146,11 @@ class ArrivalMonitorService : Service() {
         val density = resources.displayMetrics.density
         fun dp(v: Int) = (v * density).toInt()
 
-        val colorBg = Color.parseColor("#1A1D24")
-        val colorAccent = Color.parseColor("#8B5CF6")
-        val colorSuccess = Color.parseColor("#2FA86A")
-        val colorMuted = Color.parseColor("#9099AA")
-        val colorChipBg = Color.parseColor("#242833")
+        val colorBg = Color.parseColor("#FFFFFF")
+        val colorAccent = Color.parseColor("#2563EB")
+        val colorSuccess = Color.parseColor("#16A34A")
+        val colorMuted = Color.parseColor("#64748B")
+        val colorChipBg = Color.parseColor("#F1F5F9")
 
         val outer = LinearLayout(this).apply {
             setPadding(dp(28), 0, dp(28), 0)
@@ -162,7 +162,7 @@ class ArrivalMonitorService : Service() {
             background = GradientDrawable().apply {
                 setColor(colorBg)
                 cornerRadius = dp(18).toFloat()
-                setStroke(dp(1), Color.parseColor("#33FFFFFF"))
+                setStroke(dp(1), Color.parseColor("#1F0F172A"))
             }
             elevation = dp(10).toFloat()
             outer.addView(this, LinearLayout.LayoutParams(
@@ -190,7 +190,7 @@ class ArrivalMonitorService : Service() {
         }
         titleBlock.addView(TextView(this).apply {
             text = "Você chegou"
-            setTextColor(Color.WHITE)
+            setTextColor(Color.parseColor("#0F172A"))
             textSize = 15.5f
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         })
@@ -219,7 +219,7 @@ class ArrivalMonitorService : Service() {
 
         // Linha fina separando o cabeçalho da lista de pacotes
         root.addView(View(this).apply {
-            setBackgroundColor(Color.parseColor("#262A33"))
+            setBackgroundColor(Color.parseColor("#E2E8F0"))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1))
                 .apply { bottomMargin = dp(12) }
         })
@@ -264,7 +264,7 @@ class ArrivalMonitorService : Service() {
             }
             infoCol.addView(TextView(this).apply {
                 text = "Pacote ${i + 1} de ${packages.size}"
-                setTextColor(Color.WHITE)
+                setTextColor(Color.parseColor("#0F172A"))
                 textSize = 14.5f
                 setTypeface(typeface, android.graphics.Typeface.BOLD)
             })
