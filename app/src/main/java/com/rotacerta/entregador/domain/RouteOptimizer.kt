@@ -96,7 +96,10 @@ object RouteOptimizer {
         val (startAnchor, endAnchor) = anchors(origin, direction, roundTrip, returnPoint)
 
         val solved = solve(pending, startAnchor, endAnchor, usePenalties = !farthest, roadKm = roadKm)
-        val finalOrder = if (farthest) solved.order.reversed() else solved.order
+        // Para "mais distante primeiro" a rota já é resolvida TERMINANDO na origem (início livre),
+        // então ela já sai da região mais distante e volta pra perto de casa. (Antes, ela era
+        // resolvida e depois invertida, o que fazia a rota começar perto e terminar longe.)
+        val finalOrder = solved.order
 
         var stopNumber = 0
         var lastLat: Double? = null
@@ -134,8 +137,15 @@ object RouteOptimizer {
         for (i in 0 until n) { lat[i] = stops[i].lat; lng[i] = stops[i].lng }
         start?.let { lat[sIdx] = it.lat; lng[sIdx] = it.lng }
         end?.let { lat[eIdx] = it.lat; lng[eIdx] = it.lng }
-        val dist = if (roadKm != null && roadKm.size == n + 2) roadKm
-        else Array(n + 2) { i -> DoubleArray(n + 2) { j -> if (i == j) 0.0 else haversineKm(lat[i], lng[i], lat[j], lng[j]) } }
+        // Distâncias nunca podem ser NaN/infinito (coordenada inválida): viram um valor grande
+        // finito, assim a parada problemática só vai pro fim da rota em vez de quebrar tudo.
+        fun clean(v: Double) = if (v.isNaN() || v.isInfinite() || v < 0) 1.0e4 else v
+        val hav = Array(n + 2) { i -> DoubleArray(n + 2) { j -> if (i == j) 0.0 else clean(haversineKm(lat[i], lng[i], lat[j], lng[j])) } }
+        val road: Array<DoubleArray>? =
+            if (roadKm != null && roadKm.size == n + 2 && roadKm.all { it.size == n + 2 })
+                Array(n + 2) { i -> DoubleArray(n + 2) { j -> if (i == j) 0.0 else clean(roadKm[i][j]) } }
+            else null
+        var dist: Array<DoubleArray> = hav
 
         fun pathKm(r: IntArray): Double {
             var t = 0.0
@@ -184,14 +194,15 @@ object RouteOptimizer {
                 val cur = r[k - 1]
                 var best = -1; var bd = Double.MAX_VALUE
                 for (j in 0 until n) if (!used[j] && dist[cur][j] < bd) { bd = dist[cur][j]; best = j }
+                if (best == -1) best = (0 until n).first { !used[it] }
                 r[k] = best; used[best] = true
             }
             return r
         }
 
-        val deadline = System.nanoTime() + TIME_BUDGET_NANOS
+        val startNanos = System.nanoTime()
 
-        fun improve(initial: IntArray): Pair<IntArray, Double> {
+        fun improve(initial: IntArray, deadline: Long): Pair<IntArray, Double> {
             var route = initial
             var best = cost(route)
             var improved = true
@@ -243,22 +254,59 @@ object RouteOptimizer {
 
         // Pontos de partida variados: os mais próximos do início (ou espalhados, sem origem)
         val ref = start ?: LatLng(lat.take(n).average(), lng.take(n).average())
-        val firsts = (0 until n).sortedBy { haversineKm(ref.lat, ref.lng, lat[it], lng[it]) }
+        val firsts = (0 until n).sortedBy { hav[n][it].let { _ -> haversineKm(ref.lat, ref.lng, lat[it], lng[it]) } }
             .take(minOf(n, 6)).toMutableList()
         if (end != null) {
             // Também tenta começar pela parada mais distante do fim (rotas que terminam em casa)
-            val far = (0 until n).maxByOrNull { dist[it][eIdx] }
+            val far = (0 until n).maxByOrNull { hav[it][eIdx] }
             if (far != null && far !in firsts) firsts.add(far)
         }
 
-        var bestRoute: IntArray? = null
-        var bestCost = Double.MAX_VALUE
-        for (f in firsts) {
-            if (bestRoute != null && System.nanoTime() > deadline) break
-            val (r, c) = improve(nearestNeighbor(f))
-            if (c < bestCost) { bestCost = c; bestRoute = r }
+        fun search(deadline: Long, seeds: List<IntArray>): Pair<IntArray, Double> {
+            var bestR: IntArray? = null
+            var bestC = Double.MAX_VALUE
+            for (init in seeds + firsts.map { nearestNeighbor(it) }) {
+                if (bestR != null && System.nanoTime() > deadline) break
+                val (r, c) = improve(init, deadline)
+                if (c < bestC) { bestC = c; bestR = r }
+            }
+            return bestR!! to bestC
         }
-        val best = bestRoute!!
+
+        // Fase A (só com distâncias reais): resolve em linha reta primeiro. Essa rota entra como
+        // ponto de partida extra da fase B, garantindo que o resultado por ruas nunca fique pior
+        // do que a solução em linha reta (a busca local sozinha pode cair num ótimo local ruim
+        // quando as distâncias são assimétricas, ex: ruas de mão única).
+        val seeds = mutableListOf<IntArray>()
+        if (road != null) {
+            seeds.add(search(startNanos + TIME_BUDGET_NANOS / 4, emptyList()).first)
+            dist = road
+        }
+        val deadline = startNanos + TIME_BUDGET_NANOS
+        var (bestRoute, bestCost) = search(deadline, seeds)
+
+        // Busca iterada: balança a melhor rota (troca de trechos) e refaz a busca local;
+        // só aceita se melhorar. Usa o tempo que sobrou (até ~1,5 s), com sorteio fixo pra
+        // dar sempre o mesmo resultado nos mesmos dados.
+        if (n >= 8) {
+            val rnd = java.util.Random(12345L)
+            var iter = 0
+            while (System.nanoTime() < deadline && iter < 400) {
+                iter++
+                val cuts = (1 until n).shuffled(rnd).take(3).sorted()
+                if (cuts.size < 3) break
+                val (c1, c2, c3) = cuts
+                val cand = IntArray(n)
+                var k = 0
+                for (i in 0 until c1) cand[k++] = bestRoute[i]
+                for (i in c2 until c3) cand[k++] = bestRoute[i]
+                for (i in c1 until c2) cand[k++] = bestRoute[i]
+                for (i in c3 until n) cand[k++] = bestRoute[i]
+                val (r, c) = improve(cand, deadline)
+                if (c < bestCost - 1e-9) { bestCost = c; bestRoute = r }
+            }
+        }
+        val best = bestRoute
         return Solved(best.map { stops[it] }, pathKm(best), pathKm(IntArray(n) { it }))
     }
 

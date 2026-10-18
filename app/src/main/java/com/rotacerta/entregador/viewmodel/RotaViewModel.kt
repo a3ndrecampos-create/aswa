@@ -84,22 +84,7 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
         return false
     }
 
-    init {
-        // Semeia algumas entregas de exemplo na primeira execução, como no app original
-        viewModelScope.launch {
-            if (deliveryDao.count() == 0) {
-                seedSampleDeliveries()
-            }
-        }
-    }
-
-    private suspend fun seedSampleDeliveries() {
-        listOf(
-            Delivery(address = "Av. Paulista, 1578 - Bela Vista, São Paulo - SP", lat = -23.5613, lng = -46.6565, priority = Priority.ALTA, deadline = "14:30", value = 7.5, order = 1),
-            Delivery(address = "Rua Augusta, 900 - Consolação, São Paulo - SP", lat = -23.5555, lng = -46.6553, priority = Priority.MEDIA, deadline = "15:15", value = 6.0, order = 2),
-            Delivery(address = "Shopping Ibirapuera, São Paulo - SP", lat = -23.6084, lng = -46.6647, priority = Priority.BAIXA, deadline = "", value = 5.5, order = 3)
-        ).forEach { deliveryDao.insert(it) }
-    }
+    // (Removido: antes o app inserindo 3 entregas de exemplo toda vez que a lista ficava vazia.)
 
     // ---------------- CRUD de entregas ----------------
 
