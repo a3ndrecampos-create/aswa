@@ -6,10 +6,11 @@
         <item name="android:windowLightStatusBar">true</item>
     </style>
 
-    <!-- Tela de abertura clara, com o ícone do app. -->
+    <!-- Tela de abertura clara com o logo; logo em seguida a MainActivity mostra a abertura animada
+         (IntroScreen), que começa exatamente igual a esta pra transição ser contínua. -->
     <style name="Theme.RotaCerta.Splash" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">#FFFFFF</item>
-        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_logo</item>
         <item name="windowSplashScreenIconBackgroundColor">#FFFFFF</item>
         <item name="postSplashScreenTheme">@style/Theme.RotaCerta</item>
     </style>

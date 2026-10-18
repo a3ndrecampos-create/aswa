@@ -61,6 +61,20 @@ class MainActivity : ComponentActivity() {
         setContent {
             val config by viewModel.config.collectAsState()
             RotaCertaTheme {
+                // Abertura animada (~1,9 s) antes do app; as permissões só são pedidas depois,
+                // pra não aparecerem por cima do logo.
+                var showIntro by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(true) }
+                LaunchedEffect(Unit) {
+                    if (showIntro) {
+                        kotlinx.coroutines.delay(1900)
+                        showIntro = false
+                    }
+                }
+                if (showIntro) {
+                    com.rotacerta.entregador.ui.screens.IntroScreen()
+                    return@RotaCertaTheme
+                }
+
                 val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {}
                 LaunchedEffect(Unit) {
                     permissionLauncher.launch(
