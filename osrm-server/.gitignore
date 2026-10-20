@@ -1,0 +1,3 @@
+# Os dados do mapa são grandes: não vão pro Git (baixe o artifact do GitHub Actions)
+data/*
+!data/.gitkeep

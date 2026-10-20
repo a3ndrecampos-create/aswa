@@ -190,7 +190,7 @@ class RotaViewModel(app: Application) : AndroidViewModel(app) {
             val paradas = optimized.map { it.order }.distinct().size
             val km = String.format(java.util.Locale.US, "%.1f", result.distanceKm).replace('.', ',')
             val saved = if (result.baselineKm > 0.05) ((1 - result.distanceKm / result.baselineKm) * 100).toInt() else 0
-            val tipo = if (result.usedRoads) "por ruas" else "estimado, sem internet"
+            val tipo = if (result.usedRoads) "por ruas" else "em linha reta"
             _toast.emit(
                 "Rota otimizada: $paradas paradas · $km km ($tipo)" +
                     if (saved >= 1) " · $saved% menos que a ordem anterior" else ""

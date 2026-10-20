@@ -8,9 +8,10 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /**
- * Distâncias REAIS por ruas (km) entre todos os pontos, via OSRM (dados do OpenStreetMap,
- * grátis, sem chave). Se a internet ou o servidor falharem, devolve null e o otimizador
- * usa distância em linha reta — o app nunca fica sem otimizar.
+ * Distâncias REAIS por ruas (km) entre todos os pontos, via o SEU servidor OSRM
+ * (BuildConfig.ROUTING_URL). Sem URL configurada — ou se a internet/servidor falharem —
+ * devolve null e o otimizador usa distância em linha reta: o app nunca fica sem otimizar
+ * e não depende de nenhum servidor público de terceiros.
  */
 object RoadMatrixService {
     private val client = OkHttpClient.Builder()
@@ -19,10 +20,11 @@ object RoadMatrixService {
         .build()
 
     suspend fun fetchKm(points: List<LatLng>): Array<DoubleArray>? = withContext(Dispatchers.IO) {
-        if (points.size < 2 || points.size > 100) return@withContext null
+        val base = com.rotacerta.entregador.BuildConfig.ROUTING_URL
+        if (base.isBlank() || points.size < 2 || points.size > 100) return@withContext null
         runCatching {
             val coords = points.joinToString(";") { "%.6f,%.6f".format(java.util.Locale.US, it.lng, it.lat) }
-            val url = "https://router.project-osrm.org/table/v1/driving/$coords?annotations=distance"
+            val url = "$base/table/v1/driving/$coords?annotations=distance"
             val req = Request.Builder().url(url).header("User-Agent", "FlexOtimizadorDeRota/1.0").build()
             client.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) return@runCatching null

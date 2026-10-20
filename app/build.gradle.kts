@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -18,6 +20,16 @@ configurations.all {
 // Studio nesse caso, que assina por fora do Gradle e não é afetado por isto aqui.
 val releaseKeystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
 
+// Endereço do SEU servidor de rotas (OSRM próprio), ex: https://rotas.seudominio.com
+// Vem da variável de ambiente ROUTING_URL (GitHub Actions) ou de ROUTING_URL=... no
+// local.properties. Vazio = o app otimiza em linha reta e não chama nenhum servidor externo.
+val routingUrl: String = System.getenv("ROUTING_URL")?.trim()?.takeIf { it.isNotEmpty() }
+    ?: Properties().let { props ->
+        val f = rootProject.file("local.properties")
+        if (f.exists()) f.inputStream().use { props.load(it) }
+        props.getProperty("ROUTING_URL", "").trim()
+    }
+
 android {
     namespace = "com.rotacerta.entregador"
     compileSdk = 36
@@ -28,6 +40,10 @@ android {
         applicationId = "com.flexotimizador.entregador"
         minSdk = 24
         targetSdk = 36
+        // versionCode: o Google Play NÃO aceita repetir o número em nenhum upload (nem entre
+        // faixas). No GitHub Actions ele sobe sozinho a cada execução (número da execução);
+        // cada flavor usa um final diferente (…1 = teste fechado, …2 = produção), então os dois
+        // .aab da mesma execução nunca colidem. Localmente (sem a variável) usa 1.
         versionCode = 1
         versionName = "1.0"
 
@@ -54,10 +70,12 @@ android {
     productFlavors {
         create("production") {
             dimension = "environment"
+            versionCode = (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1) * 10 + 2
             buildConfigField("boolean", "IS_CLOSED_TESTING", "false")
         }
         create("closedTesting") {
             dimension = "environment"
+            versionCode = (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1) * 10 + 1
             buildConfigField("boolean", "IS_CLOSED_TESTING", "true")
             versionNameSuffix = "-teste-fechado"
         }

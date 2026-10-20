@@ -1,0 +1,64 @@
+name: Gerar dados de rotas (OSRM)
+
+# Roda só quando você clica em "Run workflow". Baixa o mapa do OpenStreetMap, recorta a
+# região que você quer e prepara os arquivos que o servidor OSRM usa. Resultado: um
+# artifact "osrm-data" (zip) pra você baixar e colocar na pasta osrm-server/data do servidor.
+on:
+  workflow_dispatch:
+    inputs:
+      pbf_url:
+        description: 'Mapa base (Geofabrik). Padrão: região Sudeste do Brasil'
+        required: true
+        default: 'https://download.geofabrik.de/south-america/brazil/sudeste-latest.osm.pbf'
+      bbox:
+        description: 'Recorte opcional "min_lon,min_lat,max_lon,max_lat" (vazio = usa o mapa inteiro). Padrão: Grande São Paulo'
+        required: false
+        default: '-46.95,-24.10,-46.15,-23.20'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar o mapa base
+        run: curl -fL --retry 3 -o base.osm.pbf "${{ github.event.inputs.pbf_url }}"
+
+      - name: Recortar a região (opcional)
+        run: |
+          if [ -n "${{ github.event.inputs.bbox }}" ]; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool
+            osmium extract --bbox "${{ github.event.inputs.bbox }}" --strategy complete_ways -o region.osm.pbf base.osm.pbf
+          else
+            mv base.osm.pbf region.osm.pbf
+          fi
+          rm -f base.osm.pbf
+          ls -la region.osm.pbf
+
+      - name: Preparar dados do OSRM (perfil carro)
+        run: |
+          IMG=ghcr.io/project-osrm/osrm-backend:latest
+          docker run --rm -t -v "$PWD:/data" $IMG osrm-extract -p /opt/car.lua /data/region.osm.pbf
+          docker run --rm -t -v "$PWD:/data" $IMG osrm-partition /data/region.osrm
+          docker run --rm -t -v "$PWD:/data" $IMG osrm-customize /data/region.osrm
+          rm -f region.osm.pbf
+          ls -la
+
+      - name: Teste rápido do servidor (precisa responder "Ok")
+        run: |
+          IMG=ghcr.io/project-osrm/osrm-backend:latest
+          docker run -d --name osrm -p 5000:5000 -v "$PWD:/data" $IMG osrm-routed --algorithm mld /data/region.osrm
+          sleep 8
+          curl -s "http://localhost:5000/table/v1/driving/-46.6565,-23.5613;-46.6553,-23.5555?annotations=distance" | tee out.json
+          grep -q '"code":"Ok"' out.json
+          docker rm -f osrm
+          rm -f out.json
+
+      - name: Empacotar
+        run: |
+          mkdir osrm-data && mv region.osrm* osrm-data/
+          du -sh osrm-data
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: osrm-data
+          path: osrm-data/
+          retention-days: 14
