@@ -49,6 +49,8 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
+        // Endereço do servidor de rotas próprio (vazio = otimiza em linha reta)
+        buildConfigField("String", "ROUTING_URL", "\"${routingUrl.trimEnd('/')}\"")
     }
 
     signingConfigs {
